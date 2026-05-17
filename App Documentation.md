@@ -300,10 +300,12 @@ To build this systematically without rushing into bugs, we will proceed in clear
 *   Build the A* pathfinding algorithm inside the worker, optimized using flat TypedArrays.
 *   Implement carriers walking along roads carrying dummy items.
 
-### Phase 3: Building Economy Chains
-*   Implement constructible buildings (Woodcutter, Sawmill, Residences).
-*   Build the carrier automated logic: detecting resource demands, picking up logs, walking to sawmill, creating planks.
-*   Add Diggers and Builders flattening the terrain and constructing.
+### Phase 3: Building Economy Chains (COMPLETED Core Infrastructure)
+*   **[Completed]** Constructible building pool & rendering system (Gray foundations, yellow scaffolding, live progress labels, and complete faction-thematic houses).
+*   **[Completed]** Dynamic role recruitment and worker state machine (Carriers dynamically recruited to Diggers and Builders based on sliders).
+*   **[Completed]** Active terrain flattening & construction gräv/build ticks (Settlers pathing, changing clothing colors and tools, active gräv/build ticks that increment progress).
+*   **[Completed]** Scaffold-to-house rendering transition at 100% progress and worker automatic revert.
+*   **[Next Step]** Carrier automated logistics: detecting resource demands, spawning logs, and transporting items along roads.
 
 ### Phase 4: Multiplayer Backend & Lobby System
 *   Set up Express, Socket.io, and Mongoose database.
