@@ -16,7 +16,8 @@ let mapSize = 128;
 // Slot 5: NEXT_GRID_Y
 // Slot 6: HEADING_DIR (0 to 7 representing 8 isometric walking directions)
 // Slot 7: ANIMATION_FRAME (0.0 to 4.0 loop for walk cycle / 0 to 100 for building progress)
-const STRIDE = 8;
+// Slot 8: CARRIED_RESOURCE (0.0 = none, 1.0 = log, 2.0 = stone, 3.0 = gold bar, 4.0 = iron bar)
+const STRIDE = 9;
 
 const ACTIVE_FLAG = 0;
 const ENTITY_TYPE = 1;
@@ -26,10 +27,12 @@ const NEXT_GRID_X = 4;
 const NEXT_GRID_Y = 5;
 const HEADING_DIR = 6;
 const ANIMATION_FRAME = 7;
+const CARRIED_RESOURCE = 8;
 
 // Simulated grid maps (Flat Typed Arrays for high-performance memory footprint)
 let terrainMap = null;
 let occupancyMap = null;
+let sharedTrafficMap = null;
 
 // Internal private simulation tracking (holds pathing queues in worker RAM)
 const settlerSimStates = [];
@@ -67,6 +70,10 @@ self.onmessage = function (event) {
     // Allocate internal simulation maps
     terrainMap = new Uint8Array(mapSize * mapSize);
     occupancyMap = new Uint16Array(mapSize * mapSize);
+
+    // Map the shared traffic map starting after the entity Float32Array!
+    const entityBufferBytes = maxEntities * STRIDE * Float32Array.BYTES_PER_ELEMENT;
+    sharedTrafficMap = new Uint8Array(sharedBuffer, entityBufferBytes, mapSize * mapSize);
 
     console.log(`👷 SimWorker: Initialized simulation thread. Max Entities: ${maxEntities}. SAB Bytes: ${sab.byteLength}`);
 
@@ -116,13 +123,36 @@ self.onmessage = function (event) {
   }
 };
 
+function isWalkableGrass(x, y) {
+  if (x < 0 || x >= 128 || y < 0 || y >= 128) return false;
+  const dx = x - 64;
+  const dy = y - 64;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  
+  const angle = Math.atan2(dy, dx);
+  const noise = Math.sin(angle * 7) * 6 + Math.cos(angle * 13) * 3;
+  const landEdge = 46 + noise;
+  
+  return dist < (landEdge - 4);
+}
+
 function spawnInitialSettlers() {
   // Spawn 15 carriers inside the settler slots (0 to 99)
   for (let i = 0; i < 15; i++) {
     const offset = i * STRIDE;
     
-    const startX = 30 + Math.floor(Math.random() * 10);
-    const startY = 30 + Math.floor(Math.random() * 10);
+    let startX = 64;
+    let startY = 64;
+    let found = false;
+    let limit = 0;
+    while (!found && limit < 100) {
+      startX = 50 + Math.floor(Math.random() * 28);
+      startY = 50 + Math.floor(Math.random() * 28);
+      if (isWalkableGrass(startX, startY)) {
+        found = true;
+      }
+      limit++;
+    }
 
     entityArray[offset + ACTIVE_FLAG] = 1.0; // Active
     entityArray[offset + ENTITY_TYPE] = 1.0; // Carrier
@@ -132,6 +162,7 @@ function spawnInitialSettlers() {
     entityArray[offset + NEXT_GRID_Y] = startY;
     entityArray[offset + HEADING_DIR] = Math.floor(Math.random() * 8);
     entityArray[offset + ANIMATION_FRAME] = 0.0;
+    entityArray[offset + CARRIED_RESOURCE] = Math.floor(Math.random() * 5); // 0 to 4
 
     // Cache local state inside worker RAM
     settlerSimStates[i] = {
@@ -303,6 +334,7 @@ function gameTick() {
             simState.targetBuildingIdx = building.index;
             simState.path = findPathAStar(prevX, prevY, building.x, building.y);
             entityArray[offset + ENTITY_TYPE] = 2.0; // Digger (Sea Green + Shovel)
+            entityArray[offset + CARRIED_RESOURCE] = 0.0; // Drop bag/resources
             taskAssigned = true;
             break;
           }
@@ -314,6 +346,7 @@ function gameTick() {
             simState.targetBuildingIdx = building.index;
             simState.path = findPathAStar(prevX, prevY, building.x, building.y);
             entityArray[offset + ENTITY_TYPE] = 3.0; // Builder (Orange-brown + Hammer)
+            entityArray[offset + CARRIED_RESOURCE] = 0.0; // Drop bag/resources
             taskAssigned = true;
             break;
           }
@@ -323,16 +356,17 @@ function gameTick() {
       if (!taskAssigned) {
         // Revert back to Carrier role if we don't have any tasks
         entityArray[offset + ENTITY_TYPE] = 1.0; // Carrier (Steel Blue + Bag)
+        entityArray[offset + CARRIED_RESOURCE] = Math.floor(Math.random() * 5); // Pick up a random resource (0 to 4)
         
         // Standard random wandering walk inside grassy meadows
         let randX, randY;
         let isValid = false;
         let limit = 0;
-        while (!isValid && limit < 10) {
-          randX = 20 + Math.floor(Math.random() * 30);
-          randY = 20 + Math.floor(Math.random() * 30);
+        while (!isValid && limit < 50) {
+          randX = 20 + Math.floor(Math.random() * 88);
+          randY = 20 + Math.floor(Math.random() * 88);
           const index = randY * mapSize + randX;
-          if (occupancyMap[index] === 0) {
+          if (occupancyMap[index] === 0 && isWalkableGrass(randX, randY)) {
             isValid = true;
           }
           limit++;
@@ -358,6 +392,12 @@ function gameTick() {
         entityArray[offset + NEXT_GRID_Y] = nextStep.y;
         entityArray[offset + HEADING_DIR] = getHeadingDirection(dx, dy);
         entityArray[offset + ANIMATION_FRAME] = (entityArray[offset + ANIMATION_FRAME] + 1) % 4;
+        
+        // Soil wear: increase traffic heat on the target tile!
+        const tileIdx = nextStep.y * mapSize + nextStep.x;
+        if (sharedTrafficMap[tileIdx] < 255) {
+          sharedTrafficMap[tileIdx]++;
+        }
       } else {
         // Reached target destination coordinate
         if (simState.state === 'walk_to_dig') {

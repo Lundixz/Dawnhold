@@ -1,6 +1,6 @@
 # App Documentation - Dawnhold
 
-Welcome to **Dawnhold**, a modern, web-based, GPU-accelerated strategy game heavily inspired by the classic **Settlers 4** (Die Siedler IV). This document defines the comprehensive architecture, design principles, optimization strategies, and implementation plan for the project.
+Welcome to **Dawnhold**, a modern, web-based, GPU-accelerated strategy game heavily inspired by classic 2.5D colony simulation games. This document defines the comprehensive architecture, design principles, optimization strategies, and implementation plan for the project.
 
 ---
 
@@ -16,7 +16,7 @@ Welcome to **Dawnhold**, a modern, web-based, GPU-accelerated strategy game heav
 
 ## 1. Game Vision & Core Mechanics
 
-Dawnhold aims to recreate the rich, organic, and lively atmosphere of **Settlers 4**. The player manages a colony, sets up complex production chains, and expands their territory using automated settlers, eventually building a military to defeat rivals.
+Dawnhold aims to recreate the rich, organic, and lively atmosphere of classic colony builders. The player manages a colony, sets up complex production chains, and expands their territory using automated settlers, eventually building a military to defeat rivals.
 
 ### A. Isometric 2.5D Grid & Terrains
 *   **Tile-Based Map**: An isometric grid of tiles (e.g., 64x64, 128x128, or 256x256).
@@ -32,7 +32,7 @@ Unlike typical RTS games (like Age of Empires), the player **does not directly c
     *   **Diggers**: Flatten the isometric terrain at a construction site before construction starts.
     *   **Builders**: Construct the building once the land is flat and materials are delivered.
     *   **Specialists (Pioneers, Geologists, Thieves)**: Manually controlled or semi-automated units. Geologists search for ores; Pioneers expand borders by digging.
-*   **Economy Chains (The Settlers 4 Standard)**:
+*   **Economy Chains (Classic Strategy Standard)**:
     ```mermaid
     graph TD
         Wood[Wood] --> Woodcutter[Woodcutter] --> Log[Logs]
@@ -61,8 +61,8 @@ Unlike typical RTS games (like Age of Empires), the player **does not directly c
 *   **Towers and Castles**: Staffing a tower with a soldier claims a radius of land. If the enemy captures or destroys the tower, the territory reverts or changes ownership, disabling any enemy buildings in that area.
 *   **Soldiers**: Divided into Swordsmen, Bowmen, and Spearmen, with tiered upgrades powered by Gold Bars.
 
-### D. Settlers 4 Aesthetic & Audiovisual Polish
-To capture the exact soul and beauty of Settlers 4, Dawnhold will implement several key features that went beyond simple mechanics to create the iconic "lively" experience:
+### D. Classic Simulation Aesthetic & Audiovisual Polish
+To capture the exact soul and beauty of classic colony builders, Dawnhold will implement several key features that went beyond simple mechanics to create the iconic "lively" experience:
 
 1.  **The "Wuselfaktor" (Bustle Factor & Visual Life)**:
     *   **Ambient Wildlife**: Idle sprites of butterflies fluttering over meadows, rabbits hopping through forests, and fish leaping out of water bodies.
@@ -87,7 +87,7 @@ To capture the exact soul and beauty of Settlers 4, Dawnhold will implement seve
             2.  *Settler Statistics*: Population distribution, occupations, and manual role overrides.
             3.  *Economy*: Resource distribution, tool/weapon queue priorities, and trade logs.
             4.  *Military & Magic*: Recruit soldiers, view mana levels, and cast spells.
-        *   **Nested Building Menus**: Selecting the *Construction* tab opens four distinct categories matching the Settlers 4 classification:
+        *   **Nested Building Menus**: Selecting the *Construction* tab opens four distinct categories matching the classic simulation classification:
             *   *Basic Materials*: Woodcutter, Sawmill, Forester, Stonecutter, Residences.
             *   *Food & Farming*: Grain Farm, Grain Mill, Bakery, Pig Farm, Slaughterhouse, Water Works, Fisher.
             *   *Mining & Smelting*: Coal, Iron, and Gold Mines, Iron and Gold Smelters, Weapon Smithy, Tool Smithy.
@@ -117,7 +117,7 @@ To capture the exact soul and beauty of Settlers 4, Dawnhold will implement seve
 
 ## 2. Technical Architecture & Libraries
 
-To achieve Settlers 4 style visuals at a rock-solid 60 FPS in a web browser, we must leverage hardware acceleration and optimal networking frameworks. Below is the approved high-performance library stack:
+To achieve high-fidelity classic visuals at a rock-solid 60 FPS in a web browser, we must leverage hardware acceleration and optimal networking frameworks. Below is the approved high-performance library stack:
 
 ### A. GPU Rendering & Visuals
 *   **Primary Renderer: PixiJS (v8)**
@@ -131,7 +131,7 @@ To achieve Settlers 4 style visuals at a rock-solid 60 FPS in a web browser, we 
 *   **Audio Controller: Howler.js**
     *   *Why Howler.js?* It wraps the low-level HTML5 Web Audio API, resolving cross-browser compatibility headaches and unlocking advanced audio features easily.
     *   *Spatial 3D Audio:* Howler.js will be used to pan and attenuate sound effects. As the player pans the camera, woodcutting, mining, and blacksmith sounds are dynamically panned left/right and faded out based on distance.
-    *   *Dynamic Crossfading Soundtrack:* Recreating the symphonic mastery of Settlers 4, Howler.js will manage dynamic volume crossfading of multi-channel stems (seamlessly crossfading peaceful building melodies to dramatic combat tracks when battle commands are active).
+    *   *Dynamic Crossfading Soundtrack:* Recreating the symphonic mastery of classic strategy games, Howler.js will manage dynamic volume crossfading of multi-channel stems (seamlessly crossfading peaceful building melodies to dramatic combat tracks when battle commands are active).
 
 ### C. Client HUD State Management
 *   **HUD Store: Zustand**
@@ -189,7 +189,7 @@ The main JavaScript thread must be reserved strictly for **User Input** and **Pi
 ### E. Hybrid Pathfinding: Graph-Based Road Network + Jump Point Search (JPS)
 Pathfinding is historically the primary CPU bottleneck in RTS games. To eliminate CPU spikes when 200 carriers are active, we implement a dual-mode pathing architecture:
 1.  **The Road Network Graph (For Carriers)**:
-    *   Like Settlers 4, carriers only walk along roads. Roads are not simulated as individual grid tiles; instead, they are abstracted into a mathematical **Directed Graph** of nodes (intersections/flags) and edges (road segments).
+    *   Like traditional colony simulators, carriers only walk along roads. Roads are not simulated as individual grid tiles; instead, they are abstracted into a mathematical **Directed Graph** of nodes (intersections/flags) and edges (road segments).
     *   *Performance:* Finding a path between two buildings along a road network of 100 intersections takes less than a microsecond using a lightweight A* search on the graph, compared to exploring thousands of grid tiles.
 2.  **Jump Point Search (For Free-Roamers)**:
     *   Pioneers, Geologists, and Soldiers can walk anywhere. For these off-road units, we run **Jump Point Search (JPS)** over the grid. JPS exploits grid symmetries to jump past flat, unobstructed terrain (meadows) rather than checking every single cell, making it 5x-10x faster than standard A* on open grids.
@@ -315,7 +315,7 @@ To build this systematically without rushing into bugs, we will proceed in clear
 ### Phase 5: Territory Expansion, Military & Polish
 *   Territory boundary rendering.
 *   Military towers, barracks recruitment, and simple soldier combat simulation.
-*   Premium audio, visual overlays, and particle effects.
+*   **[In Progress]** Premium audio, visual overlays, and particle effects. We have built the core spatial 3D audio engine ([SoundManager.js](file:///d:/Program/Dawnhold/frontend/src/engine/SoundManager.js)) and tied the symphonic faction music loops to the React HUD and settler actions. For a full integration roadmap of classic features (Eko-sektorer, Wuselfaktor, partiklar), see [S4_Integration_Analysis.md](file:///d:/Program/Dawnhold/S4_Integration_Analysis.md).
 
 ---
 
@@ -324,9 +324,9 @@ To build this systematically without rushing into bugs, we will proceed in clear
 To respect intellectual property while delivering the absolute best RTS mechanics of the classic era, **Dawnhold** establishes a completely original fictional world, distinct visual styling, and legally safe terminology:
 
 ### A. Legally Safe terms & Nomenclature
-All direct references to trademarked factions, spells, or trademarked characters from *The Settlers IV* are completely replaced by original branding:
+All direct references to trademarked factions, spells, or trademarked characters from classic simulation games are completely replaced by original branding:
 
-| Settlers 4 Concept | Dawnhold Original Equivalent | Theme & Visual Identity |
+| Classic Concept | Dawnhold Original Equivalent | Theme & Visual Identity |
 | :--- | :--- | :--- |
 | **Romans** | **Solari Empire (Solari)** | Ancient Greco-Roman solar empire. Marble towers, golden dome temples, solar shields, bright crimson and gold accents. |
 | **Vikings** | **Njordic Clans (Njordic)** | Deep timber cabins, runic stone pillars, heavy axes, ironworks, runic blue and silver color palette. |
@@ -343,6 +343,40 @@ Rather than using pagan Roman/Norse gods or specific trademarked deities, Dawnho
 ### C. Unique Mechanics Terminology
 *   **Mana**: Retained as a generic fantasy term, but themed as *Solar Favor* (Solari), *Runic Echoes* (Njordics), *Jungle Essence* (Zapotecs), and *Void Animus* (Voidborn).
 *   **Settlers**: Replaced in lore by **Dawnfolk** or **Clanfolk**, though the generic structural class names in code remain simple (`Carrier`, `Digger`, `Builder`) as they are common functional words.
+
+---
+
+## 8. Completed High-Fidelity Settlers IV Visual Overhaul
+
+To deliver on the cozy, nostalgic, and premium RTS feel of *The Settlers IV*, we have successfully engineered and integrated a complete visual and HUD aesthetic overhaul:
+
+### A. Procedural 128x128 Island Grid (Single GPU Draw Call)
+*   **Mesh Compilation**: The entire map terrain is drawn inside a single compiled GPU vertex buffer using programmatic tile textures, allowing 16,384 isometric tiles to render seamlessly at a solid 60 FPS.
+*   **Organic Biomes**: Noise-based Shoreline Generation splits the island dynamically into deep blue oceans, warm shallow bays, soft sandy beaches, lush grass meadows, and rocky mountains.
+*   **Micro-Details (Wuselfaktor)**: Added grass blade variations, scattered stone pebbles, and detailed flower bulbs across the meadows to breathe organic life into the scenery.
+
+### B. High-Fidelity Cozy Building Sprites
+*   **Fachwerk Timber Architecture**: Overhauled flat vector houses with creamy plaster walls, dark oak wooden columns, layered terracotta clay tiles, and golden straw thatch roofs.
+*   **Active Visual Indicators**: 
+    *   *Sawmill*: Real-time spinning circular saw blade.
+    *   *Grain Mill*: Beautifully rotating canvas windmill sails.
+    *   *Sentry Tower*: Multi-brick stone battlements with waving red silk banners.
+    *   *Mines*: Wood-braced shaft openings, lanterns, and steel minecart tracks.
+    *   * Smithy*: Charcoal-grey soot tile roofs with forge anvils.
+    *   *Chimney Smoke Puffs*: Animated particle puffs rising dynamically from active chimney structures.
+
+### C. Organic Dirt Path Formation (Dynamic Soil Wear)
+*   **Traffic Traversal Count**: The simulation loops track coordinate cells stepped on by settlers.
+*   **Visual Blending**: Once a specific coordinate grid reaches heavy traffic thresholds, the grass tile texture dynamically fades and transitions into a worn brown dirt road segment, representing organic, high-traffic trade pathways.
+
+### D. Settler Graphics Enhancement (Shadows & Carrying)
+*   **Translucent Ellipse Shadows**: Draw soft semi-transparent black ellipses underneath all settlers to anchor entities realistically to the ground surface.
+*   **True Resource Carrying**: Replaced generic brown bags with actual resource models rendered directly on carriers' backs (carrying raw logs, cut stone blocks, or smelted gold/iron bars visually).
+
+### E. Oak Wood & Antique Parchment HUD Skin
+*   **S4 Dark Oak Panels**: Sidebar uses layered dark oak plank textures (`index.css`) with golden metallic trim frames.
+*   **Antique Parchment Scrolls**: Inner HUD boxes use warm, textured paper backgrounds with high-contrast, elegant typography.
+*   **Gold Rivets & Carved Cobble Buttons**: Added gold circular rivets for corners, and primary action buttons designed to look like carved tactile stone blocks that light up with golden glowing borders when hovered.
 
 ---
 *Created and maintained by the Dawnhold Architecture Team.*
