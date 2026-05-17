@@ -33,6 +33,7 @@ const CARRIED_RESOURCE = 8;
 let terrainMap = null;
 let occupancyMap = null;
 let sharedTrafficMap = null;
+let sharedTerritoryMap = null;
 
 // Internal private simulation tracking (holds pathing queues in worker RAM)
 const settlerSimStates = [];
@@ -71,11 +72,28 @@ self.onmessage = function (event) {
     terrainMap = new Uint8Array(mapSize * mapSize);
     occupancyMap = new Uint16Array(mapSize * mapSize);
 
-    // Map the shared traffic map starting after the entity Float32Array!
+    // Map the shared traffic map and territory map starting after the entity Float32Array!
     const entityBufferBytes = maxEntities * STRIDE * Float32Array.BYTES_PER_ELEMENT;
+    const trafficMapBytes = mapSize * mapSize;
     sharedTrafficMap = new Uint8Array(sharedBuffer, entityBufferBytes, mapSize * mapSize);
+    sharedTerritoryMap = new Uint8Array(sharedBuffer, entityBufferBytes + trafficMapBytes, mapSize * mapSize);
 
-    console.log(`👷 SimWorker: Initialized simulation thread. Max Entities: ${maxEntities}. SAB Bytes: ${sab.byteLength}`);
+    // Populate initial starting territory for Player 1 (Aureon Lord of Light / Solari)
+    for (let x = 0; x < mapSize; x++) {
+      for (let y = 0; y < mapSize; y++) {
+        const dx = x - 64;
+        const dy = y - 64;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const index = y * mapSize + x;
+        if (dist < 26 && isWalkableGrass(x, y)) {
+          sharedTerritoryMap[index] = 1; // Player 1 territory
+        } else {
+          sharedTerritoryMap[index] = 0; // Unowned territory
+        }
+      }
+    }
+
+    console.log(`裁 SimWorker: Initialized simulation thread. Max Entities: ${maxEntities}. SAB Bytes: ${sab.byteLength}`);
 
     // Populate initial mock carrier settlers
     spawnInitialSettlers();
@@ -136,6 +154,21 @@ function isWalkableGrass(x, y) {
   return dist < (landEdge - 4);
 }
 
+function expandTerritoryAt(cx, cy, radius) {
+  for (let x = Math.max(0, cx - radius); x <= Math.min(mapSize - 1, cx + radius); x++) {
+    for (let y = Math.max(0, cy - radius); y <= Math.min(mapSize - 1, cy + radius); y++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy <= radius * radius) {
+        if (isWalkableGrass(x, y)) {
+          const index = y * mapSize + x;
+          sharedTerritoryMap[index] = 1; // Claim tile for Player 1!
+        }
+      }
+    }
+  }
+}
+
 function spawnInitialSettlers() {
   // Spawn 15 carriers inside the settler slots (0 to 99)
   for (let i = 0; i < 15; i++) {
@@ -162,7 +195,7 @@ function spawnInitialSettlers() {
     entityArray[offset + NEXT_GRID_Y] = startY;
     entityArray[offset + HEADING_DIR] = Math.floor(Math.random() * 8);
     entityArray[offset + ANIMATION_FRAME] = 0.0;
-    entityArray[offset + CARRIED_RESOURCE] = Math.floor(Math.random() * 5); // 0 to 4
+    entityArray[offset + CARRIED_RESOURCE] = 0.0; // Start empty
 
     // Cache local state inside worker RAM
     settlerSimStates[i] = {
@@ -171,7 +204,8 @@ function spawnInitialSettlers() {
       targetX: startX,
       targetY: startY,
       state: 'idle',
-      targetBuildingIdx: -1
+      targetBuildingIdx: -1,
+      logisticsTask: null
     };
   }
 }
@@ -280,33 +314,162 @@ function getHeadingDirection(dx, dy) {
   if (dx === -1 && dy === -1) return 7;
   return 0;
 }
-
 // 10 Hz Spelsimulerings-loop
 function gameTick() {
   if (!entityArray) return;
 
-  // 1. Identify all active buildings under construction (Indices 100 to 999)
+  // Slow traffic decay: every 10 ticks (1 second), decay all non-zero traffic map cells by 2
+  if (typeof gameTick.decayTimer === 'undefined') {
+    gameTick.decayTimer = 0;
+  }
+  gameTick.decayTimer++;
+  if (gameTick.decayTimer >= 10) {
+    gameTick.decayTimer = 0;
+    for (let idx = 0; idx < mapSize * mapSize; idx++) {
+      if (sharedTrafficMap[idx] > 0) {
+        sharedTrafficMap[idx] = Math.max(0, sharedTrafficMap[idx] - 2);
+      }
+    }
+  }
+
+  // 1. Identify all active buildings (under construction and completed)
   const activeBuildings = [];
+  const completedBuildings = [];
+  
   for (let i = 100; i < maxEntities; i++) {
     const offset = i * STRIDE;
     if (entityArray[offset + ACTIVE_FLAG] === 1.0 && entityArray[offset + ENTITY_TYPE] === 5.0) {
       const simState = settlerSimStates[i];
-      if (simState && simState.type === 'building' && !simState.isCompleted) {
-        // Fetch current progress directly from the shared array buffer block
+      if (simState && simState.type === 'building') {
         simState.progress = entityArray[offset + ANIMATION_FRAME];
         
-        activeBuildings.push({
-          index: i,
-          x: simState.x,
-          y: simState.y,
-          progress: simState.progress,
-          simState: simState
+        if (!simState.isCompleted) {
+          activeBuildings.push({
+            index: i,
+            x: simState.x,
+            y: simState.y,
+            progress: simState.progress,
+            simState: simState
+          });
+        } else {
+          completedBuildings.push({
+            index: i,
+            type: simState.buildingType,
+            x: simState.x,
+            y: simState.y,
+            simState: simState
+          });
+        }
+      }
+    }
+  }
+
+  // 2. Tick completed production buildings
+  for (const b of completedBuildings) {
+    const state = b.simState;
+    if (!state.inventory) {
+      state.inventory = { logs: 0, stones: 0, gold: 0, iron: 0 };
+    }
+    if (!state.productionTimer) {
+      state.productionTimer = 0;
+    }
+    
+    state.productionTimer++;
+    
+    // Woodcutter produces 1 Log every 80 ticks (8 seconds) if storage < 5
+    if (b.type === 'Woodcutter') {
+      if (state.productionTimer >= 80) {
+        state.productionTimer = 0;
+        if (state.inventory.logs < 5) {
+          state.inventory.logs++;
+          console.log(`🌲 SimWorker: Woodcutter at index ${b.index} produced a Log. Total logs: ${state.inventory.logs}`);
+        }
+      }
+    }
+    // Stonecutter produces 1 Stone every 90 ticks if storage < 5
+    else if (b.type === 'Stonecutter') {
+      if (state.productionTimer >= 90) {
+        state.productionTimer = 0;
+        if (state.inventory.stones < 5) {
+          state.inventory.stones++;
+          console.log(`🪨 SimWorker: Stonecutter at index ${b.index} produced a Stone. Total stones: ${state.inventory.stones}`);
+        }
+      }
+    }
+    // Mine production (Coal Mine / Iron Mine) every 100 ticks
+    else if (b.type === 'Coal Mine' || b.type === 'Iron Mine') {
+      if (state.productionTimer >= 100) {
+        state.productionTimer = 0;
+        const resKey = b.type === 'Coal Mine' ? 'gold' : 'iron';
+        if (state.inventory[resKey] < 5) {
+          state.inventory[resKey]++;
+        }
+      }
+    }
+    // Sawmill consumes Logs and produces planks (planks represent stones/bars here for simplicity)
+    else if (b.type === 'Sawmill') {
+      if (state.inventory.logs > 0 && state.productionTimer >= 100) {
+        state.productionTimer = 0;
+        state.inventory.logs--;
+        state.inventory.stones++; // Planks produced
+        console.log(`🪚 SimWorker: Sawmill at index ${b.index} processed 1 Log into Planks.`);
+      }
+    }
+  }
+
+  // 3. Generate logistics tasks based on resource availability
+  const logisticsTasks = [];
+
+  const woodcutters = completedBuildings.filter(b => b.type === 'Woodcutter');
+  const sawmills = completedBuildings.filter(b => b.type === 'Sawmill');
+  
+  for (const wc of woodcutters) {
+    const wcState = wc.simState;
+    if (wcState.inventory && wcState.inventory.logs > 0) {
+      // Look for a sawmill with logs < 4
+      const targetSm = sawmills.find(sm => !sm.simState.inventory || sm.simState.inventory.logs < 4);
+      if (targetSm) {
+        logisticsTasks.push({
+          resourceType: 1.0, // Log
+          fromX: wc.x,
+          fromY: wc.y,
+          toX: targetSm.x,
+          toY: targetSm.y,
+          fromIdx: wc.index,
+          toIdx: targetSm.index,
+          claimed: false
         });
       }
     }
   }
 
-  // 2. Loop through all settler slots (0 to 99)
+  const stonecutters = completedBuildings.filter(b => b.type === 'Stonecutter');
+  for (const sc of stonecutters) {
+    const scState = sc.simState;
+    if (scState.inventory && scState.inventory.stones > 0) {
+      // Find building under construction requiring stones
+      const targetBuilding = activeBuildings.find(ab => {
+        const bState = ab.simState;
+        if (!bState.inventory) bState.inventory = { logs: 0, stones: 0, gold: 0, iron: 0 };
+        return ab.progress >= 40.0 && bState.inventory.stones < 3;
+      });
+      
+      if (targetBuilding) {
+        logisticsTasks.push({
+          resourceType: 2.0, // Stone
+          fromX: sc.x,
+          fromY: sc.y,
+          toX: targetBuilding.x,
+          toY: targetBuilding.y,
+          fromIdx: sc.index,
+          toIdx: targetBuilding.index,
+          claimed: false
+        });
+      }
+    }
+  }
+
+  // 4. Loop through all settler slots (0 to 99)
   for (let i = 0; i < 100; i++) {
     const offset = i * STRIDE;
     if (entityArray[offset + ACTIVE_FLAG] !== 1.0) continue;
@@ -324,39 +487,65 @@ function gameTick() {
     if (simState.state === 'idle') {
       let taskAssigned = false;
 
-      // Scan active buildings for digging or construction work
-      for (const building of activeBuildings) {
-        if (building.progress < 40.0) {
-          // Digging phase needs up to 2 diggers
-          if (building.simState.diggersAssigned < 2) {
-            building.simState.diggersAssigned++;
-            simState.state = 'walk_to_dig';
-            simState.targetBuildingIdx = building.index;
-            simState.path = findPathAStar(prevX, prevY, building.x, building.y);
-            entityArray[offset + ENTITY_TYPE] = 2.0; // Digger (Sea Green + Shovel)
-            entityArray[offset + CARRIED_RESOURCE] = 0.0; // Drop bag/resources
-            taskAssigned = true;
-            break;
-          }
-        } else if (building.progress < 100.0) {
-          // Building phase needs up to 2 builders
-          if (building.simState.buildersAssigned < 2) {
-            building.simState.buildersAssigned++;
-            simState.state = 'walk_to_build';
-            simState.targetBuildingIdx = building.index;
-            simState.path = findPathAStar(prevX, prevY, building.x, building.y);
-            entityArray[offset + ENTITY_TYPE] = 3.0; // Builder (Orange-brown + Hammer)
-            entityArray[offset + CARRIED_RESOURCE] = 0.0; // Drop bag/resources
-            taskAssigned = true;
-            break;
+      // I. Check for active logistics transport tasks
+      const unclaimedTask = logisticsTasks.find(task => !task.claimed);
+      if (unclaimedTask) {
+        unclaimedTask.claimed = true;
+        
+        // Claim the resource immediately to avoid double-allocation
+        const fromBState = settlerSimStates[unclaimedTask.fromIdx];
+        if (fromBState && fromBState.inventory) {
+          if (unclaimedTask.resourceType === 1.0) fromBState.inventory.logs = Math.max(0, fromBState.inventory.logs - 1);
+          if (unclaimedTask.resourceType === 2.0) fromBState.inventory.stones = Math.max(0, fromBState.inventory.stones - 1);
+        }
+
+        simState.state = 'walk_to_fetch';
+        simState.targetX = unclaimedTask.fromX;
+        simState.targetY = unclaimedTask.fromY;
+        simState.logisticsTask = unclaimedTask;
+        simState.path = findPathAStar(prevX, prevY, unclaimedTask.fromX, unclaimedTask.fromY);
+        
+        entityArray[offset + ENTITY_TYPE] = 1.0; // Carrier
+        entityArray[offset + CARRIED_RESOURCE] = 0.0; // Starts carrying nothing
+        taskAssigned = true;
+      }
+
+      // II. Scan active buildings for digging or construction work
+      if (!taskAssigned) {
+        for (const building of activeBuildings) {
+          if (building.progress < 40.0) {
+            // Digging phase needs up to 2 diggers
+            if (building.simState.diggersAssigned < 2) {
+              building.simState.diggersAssigned++;
+              simState.state = 'walk_to_dig';
+              simState.targetBuildingIdx = building.index;
+              simState.path = findPathAStar(prevX, prevY, building.x, building.y);
+              entityArray[offset + ENTITY_TYPE] = 2.0; // Digger (Sea Green + Shovel)
+              entityArray[offset + CARRIED_RESOURCE] = 0.0; // Drop bag/resources
+              taskAssigned = true;
+              break;
+            }
+          } else if (building.progress < 100.0) {
+            // Building phase needs up to 2 builders
+            if (building.simState.buildersAssigned < 2) {
+              building.simState.buildersAssigned++;
+              simState.state = 'walk_to_build';
+              simState.targetBuildingIdx = building.index;
+              simState.path = findPathAStar(prevX, prevY, building.x, building.y);
+              entityArray[offset + ENTITY_TYPE] = 3.0; // Builder (Orange-brown + Hammer)
+              entityArray[offset + CARRIED_RESOURCE] = 0.0; // Drop bag/resources
+              taskAssigned = true;
+              break;
+            }
           }
         }
       }
 
+      // III. Wandering fallback
       if (!taskAssigned) {
         // Revert back to Carrier role if we don't have any tasks
         entityArray[offset + ENTITY_TYPE] = 1.0; // Carrier (Steel Blue + Bag)
-        entityArray[offset + CARRIED_RESOURCE] = Math.floor(Math.random() * 5); // Pick up a random resource (0 to 4)
+        entityArray[offset + CARRIED_RESOURCE] = 0.0; // Empty bag when wandering
         
         // Standard random wandering walk inside grassy meadows
         let randX, randY;
@@ -382,7 +571,13 @@ function gameTick() {
     }
 
     // B. Walk along the planned path step-by-step
-    if (simState.state === 'wandering' || simState.state === 'walk_to_dig' || simState.state === 'walk_to_build') {
+    if (
+      simState.state === 'wandering' || 
+      simState.state === 'walk_to_dig' || 
+      simState.state === 'walk_to_build' ||
+      simState.state === 'walk_to_fetch' ||
+      simState.state === 'walk_to_deliver'
+    ) {
       if (simState.path.length > 0) {
         const nextStep = simState.path.shift();
         const dx = nextStep.x - prevX;
@@ -396,7 +591,7 @@ function gameTick() {
         // Soil wear: increase traffic heat on the target tile!
         const tileIdx = nextStep.y * mapSize + nextStep.x;
         if (sharedTrafficMap[tileIdx] < 255) {
-          sharedTrafficMap[tileIdx]++;
+          sharedTrafficMap[tileIdx] = Math.min(255, sharedTrafficMap[tileIdx] + 20); // 20x step increment!
         }
       } else {
         // Reached target destination coordinate
@@ -404,6 +599,36 @@ function gameTick() {
           simState.state = 'digging';
         } else if (simState.state === 'walk_to_build') {
           simState.state = 'building';
+        } else if (simState.state === 'walk_to_fetch') {
+          const task = simState.logisticsTask;
+          if (task) {
+            entityArray[offset + CARRIED_RESOURCE] = task.resourceType; // Show log/stone on back!
+            
+            // Re-route to delivery destination
+            simState.state = 'walk_to_deliver';
+            simState.targetX = task.toX;
+            simState.targetY = task.toY;
+            simState.path = findPathAStar(prevX, prevY, task.toX, task.toY);
+          } else {
+            simState.state = 'idle';
+          }
+        } else if (simState.state === 'walk_to_deliver') {
+          const task = simState.logisticsTask;
+          if (task) {
+            const toBState = settlerSimStates[task.toIdx];
+            if (toBState) {
+              if (!toBState.inventory) toBState.inventory = { logs: 0, stones: 0, gold: 0, iron: 0 };
+              if (task.resourceType === 1.0) toBState.inventory.logs++;
+              if (task.resourceType === 2.0) toBState.inventory.stones++;
+              console.log(`📦 SimWorker: Carrier delivered resource type ${task.resourceType} to building ${task.toIdx}`);
+            }
+          }
+          
+          entityArray[offset + CARRIED_RESOURCE] = 0.0; // Clear back
+          simState.state = 'idle';
+          simState.logisticsTask = null;
+          entityArray[offset + NEXT_GRID_X] = prevX;
+          entityArray[offset + NEXT_GRID_Y] = prevY;
         } else {
           simState.state = 'idle';
           entityArray[offset + NEXT_GRID_X] = prevX;
@@ -431,7 +656,6 @@ function gameTick() {
           
           // Handle transition from digging to building phase in model
           if (currentProgress >= 40.0 && simState.state === 'digging') {
-            // Digging phase complete, release and let it become builder
             const bState = settlerSimStates[b_idx];
             if (bState) {
               bState.diggersAssigned = Math.max(0, bState.diggersAssigned - 1);
@@ -452,6 +676,11 @@ function gameTick() {
             // Write block to occupancy map (1 = Complete obstacle)
             const mapIndex = bState.y * mapSize + bState.x;
             occupancyMap[mapIndex] = 1;
+
+            // Sentry Tower expands player territory immediately upon completion!
+            if (bState.buildingType === 'Sentry Tower') {
+              expandTerritoryAt(bState.x, bState.y, 16);
+            }
           }
           
           simState.state = 'idle';
@@ -487,9 +716,11 @@ function handleVerifiedCommand(command) {
   console.log(`👷 SimWorker: Authoritative check on command [${type}] at X: ${x}, Y: ${y}`);
   
   if (type === 'BUILD') {
-    // 1. Check if coordinate is clear
+    // 1. Check if coordinate is clear and is within the player's territory
     const index = y * mapSize + x;
-    if (occupancyMap[index] === 0) {
+    const isOwned = sharedTerritoryMap && sharedTerritoryMap[index] === 1;
+
+    if (occupancyMap[index] === 0 && isOwned) {
       occupancyMap[index] = 2; // 2 = Building construction site / foundation
 
       // 2. Find free slot for building from 100 to 999

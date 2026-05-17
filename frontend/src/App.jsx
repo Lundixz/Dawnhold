@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { initGame, updateTickTimestamp, setPendingBuilding } from './engine/PixiApp';
+import { initGame, updateTickTimestamp, setPendingBuilding, setSelectedFaction } from './engine/PixiApp';
 import { soundManager } from './engine/SoundManager';
 import { 
   Hammer, 
@@ -65,12 +65,13 @@ export default function App() {
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    // 1. Allocate SharedArrayBuffer
     // Entity Buffer: 1000 units * 9 float properties per unit * 4 bytes per float
     // Traffic Map Buffer: 128 * 128 bytes (1 byte per tile for 0-255 traffic heat)
+    // Territory Map Buffer: 128 * 128 bytes (1 byte per tile for 0 = neutral, 1 = player)
     const entityBufferSize = MAX_UNITS * STRIDE * Float32Array.BYTES_PER_ELEMENT;
     const trafficMapSize = MAP_SIZE * MAP_SIZE;
-    const bufferSize = entityBufferSize + trafficMapSize;
+    const territoryMapSize = MAP_SIZE * MAP_SIZE;
+    const bufferSize = entityBufferSize + trafficMapSize + territoryMapSize;
     
     // We use a safe fallback if SharedArrayBuffer is not available locally
     // (though in modern browsers with proper Express headers it works flawlessly)
@@ -186,6 +187,7 @@ export default function App() {
 
   useEffect(() => {
     soundManager.initMusic(selectedFaction);
+    setSelectedFaction(selectedFaction);
   }, [selectedFaction]);
 
   // Send a verified command directly to our background authoritative worker

@@ -306,7 +306,9 @@ To build this systematically without rushing into bugs, we will proceed in clear
 *   **[Completed]** Dynamic role recruitment and worker state machine (Carriers dynamically recruited to Diggers and Builders based on sliders).
 *   **[Completed]** Active terrain flattening & construction gräv/build ticks (Settlers pathing, changing clothing colors and tools, active gräv/build ticks that increment progress).
 *   **[Completed]** Scaffold-to-house rendering transition at 100% progress and worker automatic revert.
-*   **[Next Step]** Carrier automated logistics: detecting resource demands, spawning logs, and transporting items along roads.
+*   **[Completed]** Carrier automated logistics: Woodcutters and Stonecutters produce physical resources (Logs/Stones); idle carriers dynamically claim transport tasks, pick up resources (visualizing them carried on their back), travel along dirt roads, and deliver them to Sawmills and active construction sites to fuel the economy!
+*   **[Completed]** High-fidelity camera controls: Smooth scroll-wheel zoom centered on mouse cursor and boundary limits clamping to eliminate diagonal black cutoffs at the map edge.
+*   **[Completed]** Enhanced Dynamic Soil Wear: Traversed grid cells dynamically fade into contiguous dirt paths, updating once per tick with a 3x visibility boost for gorgeous organic road systems.
 
 ### Phase 4: Multiplayer Backend & Lobby System
 *   Set up Express, Socket.io, and Mongoose database.
@@ -314,8 +316,10 @@ To build this systematically without rushing into bugs, we will proceed in clear
 *   Implement server command broadcasting and synchronized tick management.
 
 ### Phase 5: Territory Expansion, Military & Polish
-*   Territory boundary rendering.
-*   Military towers, barracks recruitment, and simple soldier combat simulation.
+*   **[Completed]** Territory boundary rendering: Built a highly performant client-side boundary drawer in PixiJS v8 that draws a gorgeous, glowing, faction-colored dotted/dashed outline along the player's territory edges, updating dynamically at 2 Hz.
+*   **[Completed]** Sentry Tower Land Expansion: Placing a Sentry Tower and completing its construction to 100% instantly triggers a territorial expansion in a radius of 16 cells, pushing the borders and allowing new buildings to be constructed. Enforced territory restrictions so that players can only build inside their own territory!
+*   Military barracks recruitment and simple soldier combat simulation.
+*   **[Completed]** High-Fidelity S4-style diagonal drop shadows: Every building structure, settler, tree, stone quarry, coal deposit, gold deposit, rabbit, and deer has a beautiful, slanted, semi-transparent black shadow cast to the bottom-right. This creates a highly premium, unified sunlight direction that grounds the entire 2.5D world with stunning height and depth!
 *   **[In Progress]** Premium audio, visual overlays, and particle effects. We have built the core spatial 3D audio engine ([SoundManager.js](file:///d:/Program/Dawnhold/frontend/src/engine/SoundManager.js)) and tied the symphonic faction music loops to the React HUD and settler actions. For a full integration roadmap of classic features (Eko-sektorer, Wuselfaktor, partiklar), see [S4_Integration_Analysis.md](file:///d:/Program/Dawnhold/S4_Integration_Analysis.md).
 
 ---
@@ -356,15 +360,22 @@ To deliver on the cozy, nostalgic, and premium RTS feel of *The Settlers IV*, we
 *   **Organic Biomes**: Noise-based Shoreline Generation splits the island dynamically into deep blue oceans, warm shallow bays, soft sandy beaches, lush grass meadows, and rocky mountains.
 *   **Micro-Details (Wuselfaktor)**: Added grass blade variations, scattered stone pebbles, and detailed flower bulbs across the meadows to breathe organic life into the scenery.
 
-### B. High-Fidelity Cozy Building Sprites
+### B. High-Fidelity Cozy Building Sprites & 60 FPS Activity Animations
 *   **Fachwerk Timber Architecture**: Overhauled flat vector houses with creamy plaster walls, dark oak wooden columns, layered terracotta clay tiles, and golden straw thatch roofs.
-*   **Active Visual Indicators**: 
-    *   *Sawmill*: Real-time spinning circular saw blade.
-    *   *Grain Mill*: Beautifully rotating canvas windmill sails.
-    *   *Sentry Tower*: Multi-brick stone battlements with waving red silk banners.
-    *   *Mines*: Wood-braced shaft openings, lanterns, and steel minecart tracks.
-    *   * Smithy*: Charcoal-grey soot tile roofs with forge anvils.
-    *   *Chimney Smoke Puffs*: Animated particle puffs rising dynamically from active chimney structures.
+*   **Active Visual Indicators & Details (60 Hz Simulation)**:
+    *   *Sawmill*: Real-time spinning steel circular saw blade (`customSaw`) and active flying golden sawdust particle sprays (`spawnSawdustParticle`).
+    *   *Grain Mill*: Beautifully rotating canvas windmill sails (`customSails`) for grinding grains.
+    *   *Stonecutter*: Integrated granite block slabs and a wooden chisel hammer (`customChiselHammer`) that taps rhythmically with grey stone dust puffs (`spawnStoneDustParticle`).
+    *   *Bakery*: Dome brick Stone Oven with a burning wood-fire glowing mouth (`customOvenFire`) pulsing dynamically.
+    *   *Pig Farm*: Cozy closed wooden pigpen fence with pink pigs (`customPig1`, `customPig2`) that bob their bodies and wiggle their tails.
+    *   *Slaughterhouse*: Ham curing racks with dry hams, and a wooden hanging shop sign (`customSwayingSign`) that sways gently as if in the wind.
+    *   *Mines (Coal & Iron)*: Timber shaft beams, hanging entrance lanterns (`customLantern`) that sway in the mountain breeze, and steel minecarts (`customCart`) that roll out of the shaft, stop to tip, and return inside periodically.
+    *   *Gold Smelter*: Liquid gold stone hearth window (`customSmelterGlow`) pulsing warm golden light as bars smelt.
+    *   *Weapon Smithy*: Hot orange charcoal coal furnace (`customSmithCoals`) breathing fire glow, and an anvil hammer (`customSmithHammer`) striking steel on a 1.5s strike period, spawning bright orange forge sparks (`spawnSmithSpark`) on impact.
+    *   *Sentry Tower*: Multi-brick stone battlements with waving red silk flag banners (`customFlag`) and a settler archer guard (`customGuard`) patrolling left and right on the battlements.
+    *   *Barracks*: Royal mahogany training doors, metal shield crests, and a wooden training dummy (`customDummyArms`) with arms that spin rapidly.
+    *   *Stone Temple*: A mossy altar henge stone circle with a magical levitating purple diamond crystal (`customCrystal`) spinning in mid-air above a glowing magical ground circle (`customGlow`), spawning floating purple and cyan arcane sparkles (`spawnMagicSpark`).
+    *   *Chimney Smoke Puffs*: Animated particle puffs rising dynamically from active chimneys on all completed buildings.
 
 ### C. Organic Dirt Path Formation (Dynamic Soil Wear)
 *   **Traffic Traversal Count**: The simulation loops track coordinate cells stepped on by settlers.
@@ -379,5 +390,18 @@ To deliver on the cozy, nostalgic, and premium RTS feel of *The Settlers IV*, we
 *   **Antique Parchment Scrolls**: Inner HUD boxes use warm, textured paper backgrounds with high-contrast, elegant typography.
 *   **Gold Rivets & Carved Cobble Buttons**: Added gold circular rivets for corners, and primary action buttons designed to look like carved tactile stone blocks that light up with golden glowing borders when hovered.
 
+### F. Cozy World Resources & Dynamic Wildlife Engine (Skog, Sten, Djur, Fisk, Minerals)
+*   **Forests (Skog)**: Clustered Northwestern and Southeastern tree sectors featuring rich programmatic pine/deciduous trunks, green leafy canopies, and delicious S4-style red and yellow forest berries.
+*   **Stone Quarries (Sten)**: Scattered Northeastern and Southwestern granite boulder deposits with jagged cleft highlights and volumetric shadows, providing raw stone to cutting yards.
+*   **Mountain Minerals (Kol & Guld)**: Jagged mineral veins clustered in the Central-Eastern Mountain Ridge:
+    *   *Coal deposits (Kol)*: Deep anthracite black obsidian chunks with glossy blue reflections.
+    *   *Gold deposits (Guld)*: Warm brown granite rocks embedded with bright sparkling golden nuggets and white glints.
+*   **Dynamic Wildlife (Djur)**: Cute animals hopping and grazing peacefully across grassy meadows:
+    *   *Rabbits*: Fluffy white bodies with twitching pink ears that execute physical sine-wave hopping arcs and nose-sniffing cycles.
+    *   *Deer*: Elegant tan deer with white spot markings that wander and graze in soothing head-tilt intervals.
+*   **Coastal Marine Life (Fisk)**: Shimmering schools of silver-blue fish in coastal shallow and deep waters that swim in organic figure-8 orbits, wiggle their tails, change speed, and dynamically shift opacity to simulate water depth.
+*   **Unified Depth Sorting**: All resources (forests, stone, minerals, and wildlife) are anchored at their base coordinate and dynamically depth-sorted alongside buildings and settlers, preventing any layering overlaps and completing the cozy 2.5D visual simulation.
+
 ---
 *Created and maintained by the Dawnhold Architecture Team.*
+# Working process- The user will ask you for development, bug fixes changes etc, but don't forget to also stop and review what has been done, investigate the features for gaps, fallacies, missing logic, it's easy to get speed blind and forget about consolodating everything. - Maintain a project documentation with all major features and architecture in a file called App http://Documentation.md, consult this documentation to get a quick overview of how things are setup, if the documentation is out of date, just update it. Make sure to document what the app is about, ie. the expected user experience so I don't have to explain what the purpose of the app is every new session. - Dont use the browser yourself, ask the user to test any features requiring browser access unless explicitly prompted to.
