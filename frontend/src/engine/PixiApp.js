@@ -479,6 +479,8 @@ function createSettlerPool(maxEntities) {
     settlerSprites.push(settlerContainer);
     worldContainer.addChild(settlerContainer);
   }
+}
+
 function createBuildingSprite(typeCode) {
   const container = new Container();
 
@@ -981,7 +983,6 @@ function createBuildingSprite(typeCode) {
   container.customProgressText = progressText;
 
   return container;
-};
 }
 
 function updateBuildingProgressVisual(buildingSprite, progress) {
@@ -1241,7 +1242,7 @@ export function setPendingBuilding(buildingType, callback) {
     worldContainer.addChild(placementPreview);
   }
   
-  placementPreview.removeAllChildren();
+  placementPreview.removeChildren();
   
   // Map building type to its internal render type code
   let typeCode = 1.0; // Woodcutter

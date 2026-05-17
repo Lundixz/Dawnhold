@@ -41,13 +41,18 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // 5. Connect to MongoDB (Graceful Database Sync)
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/dawnhold';
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('📁 Database: Connected to MongoDB successfully.'))
-  .catch((err) => {
-    console.warn('⚠️ Database Warning: MongoDB connection failed.', err.message);
-    console.warn('💡 Game server will continue running, but persistent saves/users will be disabled.');
-  });
+const MONGODB_ENABLED = process.env.MONGODB_ENABLED === 'true' || process.env.NODE_ENV === 'production';
+if (MONGODB_ENABLED) {
+  const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/dawnhold';
+  mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 2000 })
+    .then(() => console.log('📁 Database: Connected to MongoDB successfully.'))
+    .catch((err) => {
+      console.warn('⚠️ Database Warning: MongoDB connection failed.', err.message);
+      console.warn('💡 Game server will continue running, but persistent saves/users will be disabled.');
+    });
+} else {
+  console.log('📁 Database: MongoDB is disabled locally. Running in pure offline mode.');
+}
 
 // 6. Production Static Serving
 if (process.env.NODE_ENV === 'production') {
@@ -63,6 +68,13 @@ app.get('/api/status', (req, res) => {
     version: '1.0.0',
     databaseConnected: mongoose.connection.readyState === 1
   });
+});
+
+app.post('/api/log-error', (req, res) => {
+  console.error('\n🔴🔴 BROWSER RUNTIME ERROR RECEIVED 🔴🔴');
+  console.error(JSON.stringify(req.body, null, 2));
+  console.error('🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴\n');
+  res.sendStatus(200);
 });
 
 // 8. Socket.io Real-time Command & Lobby Handler
@@ -108,3 +120,4 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🟢 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`===================================================`);
 });
+// Trigger dev server reload

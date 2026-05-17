@@ -24,6 +24,22 @@
         -webkit-user-select: none;
       }
     </style>
+    <script>
+      window.onerror = function (message, source, lineno, colno, error) {
+        fetch('http://localhost:3001/api/log-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'onerror', message, source, lineno, colno, stack: error?.stack })
+        }).catch(err => console.warn('Failed to send error log to backend', err));
+      };
+      window.onunhandledrejection = function (event) {
+        fetch('http://localhost:3001/api/log-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'onunhandledrejection', message: event.reason?.message || String(event.reason), stack: event.reason?.stack })
+        }).catch(err => console.warn('Failed to send error log to backend', err));
+      };
+    </script>
   </head>
   <body>
     <div id="root"></div>

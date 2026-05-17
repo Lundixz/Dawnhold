@@ -283,6 +283,7 @@ Dawnhold/                  # Project Root
 *   **User Schema**: Holds username, password hash, rating, match history.
 *   **Map Schema**: Saves custom maps (grid size, serialized heightmap, resource deposits).
 *   **GameSave Schema**: Persists in-progress game states (a compressed JSON of the simulation state) allowing players to save and resume matches.
+*   **Local Development Graceful Offline Mode**: To facilitate seamless offline and local-only development, the server supports a `MONGODB_ENABLED` toggle in the root `.env` file. If set to `false`, the server bypasses Mongoose database connection attempts entirely, running in a pure local offline-mode with instantaneous startup and zero connection timeout lags. In production (on Railway), database connectivity is automatically enabled.
 
 ---
 

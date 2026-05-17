@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" --names \"backend,frontend\" --prefix-colors \"blue,green\"",
-    "dev:backend": "nodemon backend/server.js",
+    "dev:backend": "nodemon --watch backend backend/server.js",
     "dev:frontend": "cd frontend && npm run dev",
     "install:frontend": "cd frontend && npm install",
     "build:frontend": "cd frontend && npm run build",
