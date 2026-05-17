@@ -9,13 +9,13 @@ let mapSize = 128;
 
 // Typed Array Offset mapping per Entity (8 float slots per entity block)
 // Slot 0: ACTIVE_FLAG (1.0 = active, 0.0 = pooled/inactive)
-// Slot 1: ENTITY_TYPE (1.0 = carrier, 2.0 = digger, 3.0 = builder, 4.0 = soldier)
+// Slot 1: ENTITY_TYPE (1.0 = carrier, 2.0 = digger, 3.0 = builder, 4.0 = soldier, 5.0 = building)
 // Slot 2: PREV_GRID_X
 // Slot 3: PREV_GRID_Y
 // Slot 4: NEXT_GRID_X
 // Slot 5: NEXT_GRID_Y
 // Slot 6: HEADING_DIR (0 to 7 representing 8 isometric walking directions)
-// Slot 7: ANIMATION_FRAME (0.0 to 4.0 loop)
+// Slot 7: ANIMATION_FRAME (0.0 to 4.0 loop for walk cycle / 0 to 100 for building progress)
 const STRIDE = 8;
 
 const ACTIVE_FLAG = 0;
@@ -117,7 +117,7 @@ self.onmessage = function (event) {
 };
 
 function spawnInitialSettlers() {
-  // Spawn 15 carriers to demonstrate the 60 FPS interpolation and Delat memory
+  // Spawn 15 carriers inside the settler slots (0 to 99)
   for (let i = 0; i < 15; i++) {
     const offset = i * STRIDE;
     
@@ -135,10 +135,12 @@ function spawnInitialSettlers() {
 
     // Cache local state inside worker RAM
     settlerSimStates[i] = {
+      type: 'settler',
       path: [],
       targetX: startX,
       targetY: startY,
-      state: 'idle'
+      state: 'idle',
+      targetBuildingIdx: -1
     };
   }
 }
@@ -200,7 +202,8 @@ function findPathAStar(startX, startY, endX, endY) {
 
       // Occupancy check (avoid obstacles/buildings)
       const index = ny * mapSize + nx;
-      if (occupancyMap[index] === 1) continue; // Obstacle!
+      // Walkable terrain check: only allow walking where there are no complete buildings (value 1)
+      if (occupancyMap[index] === 1) continue; 
 
       const neighborKey = `${nx},${ny}`;
       if (closedSet.has(neighborKey)) continue;
@@ -251,65 +254,179 @@ function getHeadingDirection(dx, dy) {
 function gameTick() {
   if (!entityArray) return;
 
-  for (let i = 0; i < maxEntities; i++) {
+  // 1. Identify all active buildings under construction (Indices 100 to 999)
+  const activeBuildings = [];
+  for (let i = 100; i < maxEntities; i++) {
+    const offset = i * STRIDE;
+    if (entityArray[offset + ACTIVE_FLAG] === 1.0 && entityArray[offset + ENTITY_TYPE] === 5.0) {
+      const simState = settlerSimStates[i];
+      if (simState && simState.type === 'building' && !simState.isCompleted) {
+        // Fetch current progress directly from the shared array buffer block
+        simState.progress = entityArray[offset + ANIMATION_FRAME];
+        
+        activeBuildings.push({
+          index: i,
+          x: simState.x,
+          y: simState.y,
+          progress: simState.progress,
+          simState: simState
+        });
+      }
+    }
+  }
+
+  // 2. Loop through all settler slots (0 to 99)
+  for (let i = 0; i < 100; i++) {
     const offset = i * STRIDE;
     if (entityArray[offset + ACTIVE_FLAG] !== 1.0) continue;
 
     const simState = settlerSimStates[i];
-    if (!simState) continue;
+    if (!simState || simState.type !== 'settler') continue;
 
-    // 1. Shift target coordinates to become the previous coordinates
+    // Shift target coordinates to become the previous coordinates
     const prevX = entityArray[offset + NEXT_GRID_X];
     const prevY = entityArray[offset + NEXT_GRID_Y];
     entityArray[offset + PREV_GRID_X] = prevX;
     entityArray[offset + PREV_GRID_Y] = prevY;
 
-    // 2. State Machine: If idle or reached target, plan a new path using A*
-    if (simState.path.length === 0) {
-      // Find a random walkable target inside the grassy meadows (coords 20 to 50)
-      let randX, randY;
-      let isValid = false;
-      let limit = 0;
+    // A. Idle state role assignment check
+    if (simState.state === 'idle') {
+      let taskAssigned = false;
 
-      while (!isValid && limit < 10) {
-        randX = 20 + Math.floor(Math.random() * 30);
-        randY = 20 + Math.floor(Math.random() * 30);
-        const index = randY * mapSize + randX;
-        if (occupancyMap[index] === 0) {
-          isValid = true;
+      // Scan active buildings for digging or construction work
+      for (const building of activeBuildings) {
+        if (building.progress < 40.0) {
+          // Digging phase needs up to 2 diggers
+          if (building.simState.diggersAssigned < 2) {
+            building.simState.diggersAssigned++;
+            simState.state = 'walk_to_dig';
+            simState.targetBuildingIdx = building.index;
+            simState.path = findPathAStar(prevX, prevY, building.x, building.y);
+            entityArray[offset + ENTITY_TYPE] = 2.0; // Digger (Sea Green + Shovel)
+            taskAssigned = true;
+            break;
+          }
+        } else if (building.progress < 100.0) {
+          // Building phase needs up to 2 builders
+          if (building.simState.buildersAssigned < 2) {
+            building.simState.buildersAssigned++;
+            simState.state = 'walk_to_build';
+            simState.targetBuildingIdx = building.index;
+            simState.path = findPathAStar(prevX, prevY, building.x, building.y);
+            entityArray[offset + ENTITY_TYPE] = 3.0; // Builder (Orange-brown + Hammer)
+            taskAssigned = true;
+            break;
+          }
         }
-        limit++;
       }
 
-      if (isValid) {
-        simState.targetX = randX;
-        simState.targetY = randY;
-        // Run A* Pathfinder in worker thread
-        simState.path = findPathAStar(prevX, prevY, randX, randY);
-        simState.state = 'moving';
+      if (!taskAssigned) {
+        // Revert back to Carrier role if we don't have any tasks
+        entityArray[offset + ENTITY_TYPE] = 1.0; // Carrier (Steel Blue + Bag)
+        
+        // Standard random wandering walk inside grassy meadows
+        let randX, randY;
+        let isValid = false;
+        let limit = 0;
+        while (!isValid && limit < 10) {
+          randX = 20 + Math.floor(Math.random() * 30);
+          randY = 20 + Math.floor(Math.random() * 30);
+          const index = randY * mapSize + randX;
+          if (occupancyMap[index] === 0) {
+            isValid = true;
+          }
+          limit++;
+        }
+
+        if (isValid) {
+          simState.targetX = randX;
+          simState.targetY = randY;
+          simState.path = findPathAStar(prevX, prevY, randX, randY);
+          simState.state = 'wandering';
+        }
       }
     }
 
-    // 3. Move along the planned A* path step-by-step
-    if (simState.path.length > 0) {
-      const nextStep = simState.path.shift();
+    // B. Walk along the planned path step-by-step
+    if (simState.state === 'wandering' || simState.state === 'walk_to_dig' || simState.state === 'walk_to_build') {
+      if (simState.path.length > 0) {
+        const nextStep = simState.path.shift();
+        const dx = nextStep.x - prevX;
+        const dy = nextStep.y - prevY;
+
+        entityArray[offset + NEXT_GRID_X] = nextStep.x;
+        entityArray[offset + NEXT_GRID_Y] = nextStep.y;
+        entityArray[offset + HEADING_DIR] = getHeadingDirection(dx, dy);
+        entityArray[offset + ANIMATION_FRAME] = (entityArray[offset + ANIMATION_FRAME] + 1) % 4;
+      } else {
+        // Reached target destination coordinate
+        if (simState.state === 'walk_to_dig') {
+          simState.state = 'digging';
+        } else if (simState.state === 'walk_to_build') {
+          simState.state = 'building';
+        } else {
+          simState.state = 'idle';
+          entityArray[offset + NEXT_GRID_X] = prevX;
+          entityArray[offset + NEXT_GRID_Y] = prevY;
+        }
+      }
+    }
+
+    // C. Perform active work state
+    if (simState.state === 'digging' || simState.state === 'building') {
+      const b_idx = simState.targetBuildingIdx;
+      const b_offset = b_idx * STRIDE;
       
-      const dx = nextStep.x - prevX;
-      const dy = nextStep.y - prevY;
-
-      // Update SharedArrayBuffer for the PixiJS Render tick
-      entityArray[offset + NEXT_GRID_X] = nextStep.x;
-      entityArray[offset + NEXT_GRID_Y] = nextStep.y;
-      entityArray[offset + HEADING_DIR] = getHeadingDirection(dx, dy);
-    } else {
-      // Reached target coordinate
-      simState.state = 'idle';
-      entityArray[offset + NEXT_GRID_X] = prevX;
-      entityArray[offset + NEXT_GRID_Y] = prevY;
+      // Verify building is still active
+      if (entityArray[b_offset + ACTIVE_FLAG] === 1.0) {
+        let currentProgress = entityArray[b_offset + ANIMATION_FRAME];
+        
+        if (currentProgress < 100.0) {
+          // Increment building progress (1% per tick per active settler)
+          currentProgress = Math.min(100.0, currentProgress + 1.0);
+          entityArray[b_offset + ANIMATION_FRAME] = currentProgress;
+          
+          // Play a cute wobble frame for the worker
+          entityArray[offset + ANIMATION_FRAME] = (entityArray[offset + ANIMATION_FRAME] + 1) % 4;
+          
+          // Handle transition from digging to building phase in model
+          if (currentProgress >= 40.0 && simState.state === 'digging') {
+            // Digging phase complete, release and let it become builder
+            const bState = settlerSimStates[b_idx];
+            if (bState) {
+              bState.diggersAssigned = Math.max(0, bState.diggersAssigned - 1);
+            }
+            
+            simState.state = 'idle';
+            simState.targetBuildingIdx = -1;
+            entityArray[offset + NEXT_GRID_X] = prevX;
+            entityArray[offset + NEXT_GRID_Y] = prevY;
+          }
+        } else {
+          // Building is 100% complete! Mark it and release the worker
+          const bState = settlerSimStates[b_idx];
+          if (bState) {
+            bState.diggersAssigned = 0;
+            bState.buildersAssigned = 0;
+            bState.isCompleted = true;
+            // Write block to occupancy map (1 = Complete obstacle)
+            const mapIndex = bState.y * mapSize + bState.x;
+            occupancyMap[mapIndex] = 1;
+          }
+          
+          simState.state = 'idle';
+          simState.targetBuildingIdx = -1;
+          entityArray[offset + NEXT_GRID_X] = prevX;
+          entityArray[offset + NEXT_GRID_Y] = prevY;
+        }
+      } else {
+        // Building was destroyed or is invalid
+        simState.state = 'idle';
+        simState.targetBuildingIdx = -1;
+        entityArray[offset + NEXT_GRID_X] = prevX;
+        entityArray[offset + NEXT_GRID_Y] = prevY;
+      }
     }
-
-    // 4. Increment animation walk frame cycles
-    entityArray[offset + ANIMATION_FRAME] = (entityArray[offset + ANIMATION_FRAME] + 1) % 4;
   }
 
   // Notify main thread that a simulation tick has finished
@@ -326,15 +443,68 @@ function gameTick() {
 
 function handleVerifiedCommand(command) {
   // Command validator (Anti-Cheat check)
-  const { type, x, y } = command;
+  const { type, x, y, building } = command;
   console.log(`👷 SimWorker: Authoritative check on command [${type}] at X: ${x}, Y: ${y}`);
   
   if (type === 'BUILD') {
-    // Write placement to internal occupancy map
+    // 1. Check if coordinate is clear
     const index = y * mapSize + x;
     if (occupancyMap[index] === 0) {
-      occupancyMap[index] = 1; // 1 = Building occupy
-      console.log(`👷 SimWorker: Placed building successfully in model at ${x}, ${y}`);
+      occupancyMap[index] = 2; // 2 = Building construction site / foundation
+
+      // 2. Find free slot for building from 100 to 999
+      let b_idx = -1;
+      for (let i = 100; i < maxEntities; i++) {
+        const offset = i * STRIDE;
+        if (entityArray[offset + ACTIVE_FLAG] === 0.0) {
+          b_idx = i;
+          break;
+        }
+      }
+
+      if (b_idx !== -1) {
+        const offset = b_idx * STRIDE;
+        entityArray[offset + ACTIVE_FLAG] = 1.0; // Active
+        entityArray[offset + ENTITY_TYPE] = 5.0; // Building
+        entityArray[offset + PREV_GRID_X] = x;
+        entityArray[offset + PREV_GRID_Y] = y;
+        entityArray[offset + NEXT_GRID_X] = x;
+        entityArray[offset + NEXT_GRID_Y] = y;
+        
+        // Map building type to float code
+        let typeCode = 1.0; // Woodcutter
+        if (building === 'Sawmill') typeCode = 2.0;
+        else if (building === 'Stonecutter') typeCode = 3.0;
+        else if (building === 'Residence') typeCode = 4.0;
+        else if (building === 'Grain Farm') typeCode = 5.0;
+        else if (building === 'Grain Mill') typeCode = 6.0;
+        else if (building === 'Bakery') typeCode = 7.0;
+        else if (building === 'Pig Farm') typeCode = 8.0;
+        else if (building === 'Slaughterhouse') typeCode = 9.0;
+        else if (building === 'Coal Mine') typeCode = 10.0;
+        else if (building === 'Iron Mine') typeCode = 11.0;
+        else if (building === 'Gold Smelter') typeCode = 12.0;
+        else if (building === 'Weapon Smithy') typeCode = 13.0;
+        else if (building === 'Sentry Tower') typeCode = 14.0;
+        else if (building === 'Barracks') typeCode = 15.0;
+        else if (building === 'Stone Temple') typeCode = 16.0;
+
+        entityArray[offset + HEADING_DIR] = typeCode;
+        entityArray[offset + ANIMATION_FRAME] = 0.0; // 0% progress
+
+        settlerSimStates[b_idx] = {
+          type: 'building',
+          buildingType: building,
+          x: x,
+          y: y,
+          progress: 0,
+          diggersAssigned: 0,
+          buildersAssigned: 0,
+          isCompleted: false
+        };
+
+        console.log(`👷 SimWorker: Spawned building ${building} at slot ${b_idx} coordinates (${x}, ${y})`);
+      }
     }
   }
 }

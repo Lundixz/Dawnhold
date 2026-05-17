@@ -1,8 +1,9 @@
-import { Application, Container, Graphics, Assets, Sprite } from 'pixi.js';
+import { Application, Container, Graphics, Assets, Sprite, Text } from 'pixi.js';
 
 let app = null;
 let worldContainer = null;
 let settlerSprites = []; // Cache of active settler visual sprites
+let buildingSprites = []; // Cache of active building visual sprites
 let lastTickTime = Date.now();
 
 // Grid configuration
@@ -108,15 +109,33 @@ function createSettlerPool(maxEntities) {
   for (let i = 0; i < maxEntities; i++) {
     const settlerContainer = new Container();
 
-    // Draw a cute placeholder worker shape (since we don't have full textures yet)
+    // Body (white so we can tint it dynamically based on role)
     const body = new Graphics()
       .circle(0, -12, 10)
-      .fill({ color: 0x4682b4 }); // Carrier steel blue
+      .fill({ color: 0xffffff });
 
-    // Small carrier bag representation
+    // Small carrier bag representation (visible for carriers)
     const bag = new Graphics()
       .rect(-6, -6, 12, 12)
       .fill({ color: 0x8b4513 }); // Brown bag
+    
+    // Shovel representation (visible for diggers)
+    const shovel = new Graphics()
+      .rect(-2, -18, 4, 18) // handle
+      .fill({ color: 0xa0522d })
+      .rect(-5, -24, 10, 8) // blade
+      .fill({ color: 0xc0c0c0 });
+    shovel.x = -8;
+    shovel.y = -10;
+
+    // Hammer representation (visible for builders)
+    const hammer = new Graphics()
+      .rect(-2, -14, 4, 14) // handle
+      .fill({ color: 0xa0522d })
+      .rect(-7, -19, 14, 6) // head
+      .fill({ color: 0x808080 });
+    hammer.x = -8;
+    hammer.y = -10;
     
     // Settler head
     const head = new Graphics()
@@ -124,15 +143,186 @@ function createSettlerPool(maxEntities) {
       .fill({ color: 0xffdbac }); // Skin tone
 
     settlerContainer.addChild(bag);
+    settlerContainer.addChild(shovel);
+    settlerContainer.addChild(hammer);
     settlerContainer.addChild(body);
     settlerContainer.addChild(head);
 
     // Active state managed by checking Float32Array directly
     settlerContainer.visible = false;
 
+    // Cache nested nodes
+    settlerContainer.customBody = body;
+    settlerContainer.customBag = bag;
+    settlerContainer.customShovel = shovel;
+    settlerContainer.customHammer = hammer;
+
     // Cache the sprite reference
     settlerSprites.push(settlerContainer);
     worldContainer.addChild(settlerContainer);
+  }
+}
+
+function createBuildingSprite(typeCode) {
+  const container = new Container();
+
+  // 1. Draw foundation (a gray isometric stone diamond base)
+  const foundation = new Graphics()
+    .moveTo(0, 0)
+    .lineTo(48, 24)
+    .lineTo(0, 48)
+    .lineTo(-48, 24)
+    .closePath()
+    .fill({ color: 0x808080 }); // stone gray
+  container.addChild(foundation);
+
+  // 2. Draw active complete building graphic (initially invisible)
+  const completeBuilding = new Container();
+  
+  let buildingColor = 0xa0522d; // Woodcutter brown
+  let roofColor = 0x2e8b57; // Green roof
+  let iconText = "🪓";
+
+  if (typeCode === 2.0) { // Sawmill
+    buildingColor = 0xd2b48c;
+    roofColor = 0xcd5c5c;
+    iconText = "🪵";
+  } else if (typeCode === 3.0) { // Stonecutter
+    buildingColor = 0xa9a9a9;
+    roofColor = 0x708090;
+    iconText = "🪨";
+  } else if (typeCode === 4.0) { // Residence
+    buildingColor = 0xf5f5dc;
+    roofColor = 0xb22222;
+    iconText = "🏠";
+  } else if (typeCode === 5.0) {
+    buildingColor = 0xdeb887;
+    roofColor = 0x228b22;
+    iconText = "🌾";
+  } else if (typeCode === 6.0) {
+    buildingColor = 0xdeb887;
+    roofColor = 0xb8860b;
+    iconText = "💨";
+  } else if (typeCode === 7.0) {
+    buildingColor = 0xf4a460;
+    roofColor = 0xcd853f;
+    iconText = "🥖";
+  } else if (typeCode === 8.0) {
+    buildingColor = 0xffc0cb;
+    roofColor = 0x8b5a2b;
+    iconText = "🐖";
+  } else if (typeCode === 10.0) {
+    buildingColor = 0x4a4a4a;
+    roofColor = 0x1a1a1a;
+    iconText = "🌑";
+  } else if (typeCode === 11.0) {
+    buildingColor = 0x708090;
+    roofColor = 0x4682b4;
+    iconText = "⛓️";
+  } else if (typeCode === 13.0) {
+    buildingColor = 0xb22222;
+    roofColor = 0x800000;
+    iconText = "⚔️";
+  } else if (typeCode === 14.0) {
+    buildingColor = 0xbc8f8f;
+    roofColor = 0x556b2f;
+    iconText = "🏹";
+  } else if (typeCode === 15.0) {
+    buildingColor = 0xcd853f;
+    roofColor = 0x8b0000;
+    iconText = "🛡️";
+  } else if (typeCode === 16.0) {
+    buildingColor = 0x98fb98;
+    roofColor = 0x4b0082;
+    iconText = "🔮";
+  }
+
+  // Draw main house block
+  const walls = new Graphics()
+    .rect(-24, -40, 48, 40)
+    .fill({ color: buildingColor })
+    .stroke({ width: 2, color: 0x3e2723 });
+  
+  // Roof shape
+  const roof = new Graphics()
+    .moveTo(-28, -40)
+    .lineTo(0, -60)
+    .lineTo(28, -40)
+    .closePath()
+    .fill({ color: roofColor })
+    .stroke({ width: 2, color: 0x3e2723 });
+
+  // Door
+  const door = new Graphics()
+    .rect(-6, -16, 12, 16)
+    .fill({ color: 0x5c4033 });
+
+  // Icon sign above building
+  const label = new Text({
+    text: iconText,
+    style: {
+      fontSize: 18,
+      fill: 0xffffff
+    }
+  });
+  label.x = -9;
+  label.y = -78;
+
+  completeBuilding.addChild(walls);
+  completeBuilding.addChild(roof);
+  completeBuilding.addChild(door);
+  completeBuilding.addChild(label);
+  
+  completeBuilding.visible = false;
+  container.addChild(completeBuilding);
+
+  // 3. Draw scaffolding/wooden frames (progress visual, initially visible)
+  const scaffold = new Graphics()
+    .rect(-26, -42, 6, 42).fill({ color: 0xd2b48c })
+    .rect(20, -42, 6, 42).fill({ color: 0xd2b48c })
+    .rect(-26, -42, 52, 6).fill({ color: 0xd2b48c })
+    .rect(-26, -22, 52, 4).fill({ color: 0xd2b48c });
+
+  // Add cross-bracing
+  scaffold.moveTo(-20, -36).lineTo(20, -6).stroke({ color: 0x8b4513, width: 2 });
+  scaffold.moveTo(20, -36).lineTo(-20, -6).stroke({ color: 0x8b4513, width: 2 });
+
+  container.addChild(scaffold);
+
+  // 4. Progress Text label above construction
+  const progressText = new Text({
+    text: "0%",
+    style: {
+      fontSize: 12,
+      fill: 0x00ff00,
+      fontWeight: 'bold',
+      stroke: { color: 0x000000, width: 3 }
+    }
+  });
+  progressText.x = -12;
+  progressText.y = -62;
+  container.addChild(progressText);
+
+  // Cache sub-object references
+  container.customComplete = completeBuilding;
+  container.customScaffold = scaffold;
+  container.customProgressText = progressText;
+
+  return container;
+}
+
+function updateBuildingProgressVisual(buildingSprite, progress) {
+  if (progress >= 100.0) {
+    buildingSprite.customComplete.visible = true;
+    buildingSprite.customScaffold.visible = false;
+    buildingSprite.customProgressText.visible = false;
+  } else {
+    buildingSprite.customComplete.visible = false;
+    buildingSprite.customScaffold.visible = true;
+    buildingSprite.customProgressText.visible = true;
+    buildingSprite.customProgressText.text = `${Math.floor(progress)}%`;
+    // Scaffolding becomes increasingly transparent as complete building builds up underneath
+    buildingSprite.customScaffold.alpha = 1.0 - (progress / 100.0) * 0.4;
   }
 }
 
@@ -165,8 +355,52 @@ function renderLoop(entityArray, maxEntities) {
 
     if (!sprite) continue;
 
-    // Read active state directly from SharedArrayBuffer block
     const isActive = entityArray[offset + ACTIVE_FLAG] === 1.0;
+    const entityType = entityArray[offset + ENTITY_TYPE];
+
+    // --- BUILDING RENDERING BRANCH (Entity Type 5.0) ---
+    if (entityType === 5.0) {
+      // Hide standard settler visual for this index
+      sprite.visible = false;
+
+      if (!isActive) {
+        const buildingSprite = buildingSprites[i];
+        if (buildingSprite) buildingSprite.visible = false;
+        continue;
+      }
+
+      let buildingSprite = buildingSprites[i];
+      if (!buildingSprite) {
+        buildingSprite = createBuildingSprite(entityArray[offset + HEADING_DIR]);
+        buildingSprites[i] = buildingSprite;
+        worldContainer.addChild(buildingSprite);
+      }
+
+      buildingSprite.visible = true;
+
+      // Buildings do not interpolate (they stay statically positioned on grid)
+      const gridX = entityArray[offset + NEXT_GRID_X];
+      const gridY = entityArray[offset + NEXT_GRID_Y];
+      
+      const screenX = (gridX - gridY) * (TILE_WIDTH / 2);
+      const screenY = (gridX + gridY) * (TILE_HEIGHT / 2);
+
+      buildingSprite.x = screenX;
+      buildingSprite.y = screenY;
+      
+      // Buildings are sorted slightly behind units walking on the exact same tile row
+      buildingSprite.zIndex = screenY - 5;
+
+      const progress = entityArray[offset + ANIMATION_FRAME];
+      updateBuildingProgressVisual(buildingSprite, progress);
+      continue;
+    }
+
+    // --- SETTLER RENDERING BRANCH ---
+    const buildingSprite = buildingSprites[i];
+    if (buildingSprite) {
+      buildingSprite.visible = false;
+    }
 
     if (!isActive) {
       sprite.visible = false;
@@ -174,6 +408,29 @@ function renderLoop(entityArray, maxEntities) {
     }
 
     sprite.visible = true;
+
+    // Toggle settler visuals/clothing based on role
+    if (entityType === 1.0) { // Carrier
+      sprite.customBody.tint = 0x4682b4; // Steel Blue
+      sprite.customBag.visible = true;
+      sprite.customShovel.visible = false;
+      sprite.customHammer.visible = false;
+    } else if (entityType === 2.0) { // Digger
+      sprite.customBody.tint = 0x2e8b57; // Sea Green
+      sprite.customBag.visible = false;
+      sprite.customShovel.visible = true;
+      sprite.customHammer.visible = false;
+    } else if (entityType === 3.0) { // Builder
+      sprite.customBody.tint = 0xcd853f; // Orange-brown / Peru
+      sprite.customBag.visible = false;
+      sprite.customShovel.visible = false;
+      sprite.customHammer.visible = true;
+    } else {
+      sprite.customBody.tint = 0xffffff;
+      sprite.customBag.visible = false;
+      sprite.customShovel.visible = false;
+      sprite.customHammer.visible = false;
+    }
 
     // 1. Read coordinates
     const prevGridX = entityArray[offset + PREV_GRID_X];
@@ -192,8 +449,7 @@ function renderLoop(entityArray, maxEntities) {
     sprite.x = screenX;
     sprite.y = screenY;
 
-    // 4. Dynamic scaling to simulate isometric depth overlaps (further away is smaller)
-    // 2.5D sorting rule: lower on screen is in front
+    // 4. Dynamic sorting: lower on screen is in front
     sprite.zIndex = screenY;
 
     // Dynamic animation wobble
@@ -210,10 +466,6 @@ function setupCameraControls(canvas) {
   let lastX = 0;
   let lastY = 0;
 
-  // Zoom scale
-  let zoomLevel = 1.0;
-
-  // Mouse Dragging to Pan the map
   canvas.addEventListener('mousedown', (e) => {
     isDragging = true;
     lastX = e.clientX;
@@ -234,22 +486,5 @@ function setupCameraControls(canvas) {
 
   window.addEventListener('mouseup', () => {
     isDragging = false;
-  });
-
-  // Mouse Scroll to Zoom the camera
-  canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const zoomFactor = 1.1;
-    
-    // Zoom In
-    if (e.deltaY < 0 && zoomLevel < 2.5) {
-      zoomLevel *= zoomFactor;
-      worldContainer.scale.set(zoomLevel);
-    } 
-    // Zoom Out
-    else if (e.deltaY > 0 && zoomLevel > 0.4) {
-      zoomLevel /= zoomFactor;
-      worldContainer.scale.set(zoomLevel);
-    }
   });
 }
