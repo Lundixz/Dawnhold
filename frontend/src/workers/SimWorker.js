@@ -79,13 +79,15 @@ self.onmessage = function (event) {
     sharedTerritoryMap = new Uint8Array(sharedBuffer, entityBufferBytes + trafficMapBytes, mapSize * mapSize);
 
     // Populate initial starting territory for Player 1 (Aureon Lord of Light / Solari)
+    const halfMap = mapSize / 2;
+    const spawnRadius = mapSize * 0.20; // 20% of mapSize
     for (let x = 0; x < mapSize; x++) {
       for (let y = 0; y < mapSize; y++) {
-        const dx = x - 64;
-        const dy = y - 64;
+        const dx = x - halfMap;
+        const dy = y - halfMap;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const index = y * mapSize + x;
-        if (dist < 26 && isWalkableGrass(x, y)) {
+        if (dist < spawnRadius && isWalkableGrass(x, y)) {
           sharedTerritoryMap[index] = 1; // Player 1 territory
         } else {
           sharedTerritoryMap[index] = 0; // Unowned territory
@@ -142,14 +144,15 @@ self.onmessage = function (event) {
 };
 
 function isWalkableGrass(x, y) {
-  if (x < 0 || x >= 128 || y < 0 || y >= 128) return false;
-  const dx = x - 64;
-  const dy = y - 64;
+  if (x < 0 || x >= mapSize || y < 0 || y >= mapSize) return false;
+  const halfMap = mapSize / 2;
+  const dx = x - halfMap;
+  const dy = y - halfMap;
   const dist = Math.sqrt(dx * dx + dy * dy);
   
   const angle = Math.atan2(dy, dx);
   const noise = Math.sin(angle * 7) * 6 + Math.cos(angle * 13) * 3;
-  const landEdge = 46 + noise;
+  const landEdge = (mapSize * 0.36) + noise;
   
   return dist < (landEdge - 4);
 }
@@ -170,17 +173,22 @@ function expandTerritoryAt(cx, cy, radius) {
 }
 
 function spawnInitialSettlers() {
+  const halfMap = mapSize / 2;
   // Spawn 15 carriers inside the settler slots (0 to 99)
   for (let i = 0; i < 15; i++) {
     const offset = i * STRIDE;
     
-    let startX = 64;
-    let startY = 64;
+    let startX = halfMap;
+    let startY = halfMap;
     let found = false;
     let limit = 0;
+    
+    const rangeMin = Math.floor(halfMap * 0.78);
+    const rangeSpan = Math.floor(halfMap * 0.44);
+    
     while (!found && limit < 100) {
-      startX = 50 + Math.floor(Math.random() * 28);
-      startY = 50 + Math.floor(Math.random() * 28);
+      startX = rangeMin + Math.floor(Math.random() * rangeSpan);
+      startY = rangeMin + Math.floor(Math.random() * rangeSpan);
       if (isWalkableGrass(startX, startY)) {
         found = true;
       }

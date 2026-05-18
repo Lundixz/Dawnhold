@@ -6,6 +6,9 @@ This document defines the repeatable architectural pattern for fullstack applica
 The purpose is to standardize the frameworks we use to a limited set of reliable and well functioning frameworks. 
 These are preferred frameworks for different purposes. 
 
+> [!IMPORTANT]
+> **Dependency Version Policy**: Always use and install the latest stable releases of these preferred libraries. Do not pin to old version numbers in `package.json`.
+
 🌐 Core Web & API Framework
 These are the backbone of your server, handling requests, security, and communication.
 
@@ -33,9 +36,10 @@ How your app stores information and handles heavy lifting without slowing down t
 
 mongoose: An Object Data Modeling (ODM) library for MongoDB. It provides a schema-based solution to model your application data.
 
-ioredis: A high-performance Redis client. Usually used for caching or as the "engine" behind your message queues.
+ioredis: A high-performance Redis client. Usually used for caching or as the "engine" behind your message queues. Redis is prone to swelling and stale data, it needs an explicit cleanup mechanism. 
 
 bullmq: A powerful message queue system. It uses Redis to handle distributed jobs (like processing large uploads or sending bulk emails) in the background.
+Redis is prone to swelling and stale data, it needs an explicit cleanup mechanism. 
 
 🛠️ Utilities & Integration
 Tools for environment management and third-party service integration.
@@ -69,6 +73,8 @@ nodemon: Automatically restarts your node application when it detects file chang
 ├── .env               # Unified environment variables
 ├── package.json       # Root: Backend deps + Orchestration scripts
 └── .gitignore         # Includes frontend/dist, node_modules, .env, etc.
+└── scripts/           # Temporary test scripts
+└── docs/              # Documentation for the app
 ```
 ## 2. Root `package.json` Template
 The root `package.json` is the "brain" of the deployment. It manages backend dependencies and defines the build pipeline for the frontend.
@@ -89,13 +95,24 @@ The root `package.json` is the "brain" of the deployment. It manages backend dep
     "postinstall": "npm run build"
   },
   "dependencies": {
-    "..." : "All other backend dependencies here"
+    "express": "latest",
+    "axios": "latest",
+    "cors": "latest",
+    "cookie-parser": "latest",
+    "socket.io": "latest",
+    "jsonwebtoken": "latest",
+    "bcryptjs": "latest",
+    "mongoose": "latest",
+    "ioredis": "latest",
+    "bullmq": "latest",
+    "dotenv": "latest"
   },
   "devDependencies": {
-
+    "concurrently": "latest",
+    "nodemon": "latest"
   },
   "engines": {
-
+    "node": ">=24.0.0"
   }
 }
 ```
@@ -145,25 +162,36 @@ https://railpack.com/languages/node Node specific documentation
 https://railpack.com/config/file Configuration file for 
 
 # AI / LLM 
-Google Gemini models: Default to gemini-3-flash-preview unless prompted otherwise
-
+Google Gemini models: Default to gemini-3-flash-preview unless prompted otherwise. 
+Do not suggest a lower version than gemini 3 such as gemini 1.5 etc, those are outdated
+ChatGPT: Default to chat gpt 5xx models
+Claude: Default to Claude Sonnet 4.6
 
 ## Gemini Added Memories
 
 
 # Environment
-Dev environment is on a PC. 
-Don't forget gitignore file
+Dev environment is on a PC. You can only use console commands for that OS. 
+Create a .gitignore file which contains a default config. 
+Create a .env file for environment variables. The root .env file is also used for vite's variables, make sure they are referenced from there. 
 
 ## Known limitations in Railway
 Outbound Network - Railway blocks SMTP outbound on free and hobby plan. A pro plan is needed for outbound SMTP such as password recovery through e-mail. 
 
 # Working process
-The user will ask you for development, bug fixes changes etc, 
+- The user will ask you for development, bug fixes changes etc, 
 but don't forget to also stop and review what has been done, investigate the features for gaps, fallacies, missing logic, it's easy to get speed blind and forget about consolodating everything. 
-Maintain a project documentation with all major features and architecture in a file called App Documentation.md, consult this documentation to get a quick overview of how things are setup, if the documentation is out of date, just update it. 
+- Maintain a project documentation with all major features and architecture in a file called App Documentation.md, consult this documentation to get a quick overview of how things are setup, if the documentation is out of date, just update it. Make sure to document what the app is about, ie. the expected user experience so I don't have to explain what the purpose of the app is every new session. 
+- Dont use the browser yourself, ask the user to test any features requiring browser access unless explicitly prompted to. 
 
 # When you are done with changes
 Ask yourself. Are there any gaps in the implementation? 
 This is useful for identifying related issues that might not have been in 
-direct scope for the task but still is affected. 
+direct scope for the task but still is affected.
+
+# At the end of every working session
+Create a Last_Session_Summary.md file in the project root. 
+This file should contain a summary of the changes made during the session, 
+as well as any important notes or issues discovered. This file will be 
+used to track the progress of the project and to ensure that 
+everyone is on the same page.

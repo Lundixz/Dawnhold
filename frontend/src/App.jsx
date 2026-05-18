@@ -104,7 +104,8 @@ export default function App() {
     // 4. Initialize PixiJS (v8) GPU Engine
     let isCancelled = false;
     let pixiApp = null;
-    initGame(canvasRef.current, sharedBuffer, MAX_UNITS).then((app) => {
+    console.log('🎮 PixiJS (v8): Launching game with rounded autotiles v2.4.');
+    initGame(canvasRef.current, sharedBuffer, MAX_UNITS, MAP_SIZE).then((app) => {
       if (isCancelled) {
         try { app.destroy(true, { children: true }); } catch (e) {}
         return;

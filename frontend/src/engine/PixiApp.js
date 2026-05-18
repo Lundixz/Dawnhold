@@ -105,30 +105,44 @@ export async function initGame(canvasElement, sharedBuffer, maxEntities) {
   console.log('🎮 PixiJS (v8): Initialized successfully and cleared stale instances.');
   app = newApp;
 
+  // Register unified aliases in PixiJS to prevent relative path mapping/domain issues in browser caches
+  Assets.add({ alias: 'v2Grass', src: '/v2_assets/grass_tile.png' });
+  Assets.add({ alias: 'v2Sand', src: '/v2_assets/sand_tile.png' });
+  Assets.add({ alias: 'v2Water', src: '/v2_assets/water_tile.png' });
+  Assets.add({ alias: 'v2SandSoft', src: '/v2_assets/sand_tile_soft.png' });
+  Assets.add({ alias: 'v2WaterSoft', src: '/v2_assets/water_tile_soft.png' });
+  Assets.add({ alias: 'v2Tree', src: '/v2_assets/tree_1.png' });
+  Assets.add({ alias: 'v2Flowers', src: '/v2_assets/flowers.png' });
+  Assets.add({ alias: 'v2Bush', src: '/v2_assets/bush.png' });
+  Assets.add({ alias: 'v2GrassTuft', src: '/v2_assets/grass_tuft.png' });
+
+  const beachKeys = [
+    "0001", "0010", "0011", "0100", "0101", "0110", "0111",
+    "1000", "1001", "1010", "1011", "1100", "1101", "1110"
+  ];
+  for (const key of beachKeys) {
+    Assets.add({ alias: `v2Beach_${key}`, src: `/v2_assets/beach_${key}.png` });
+    Assets.add({ alias: `v2GrassSand_${key}`, src: `/v2_assets/grass_sand_${key}.png` });
+    Assets.add({ alias: `v2ShallowDeep_${key}`, src: `/v2_assets/shallow_deep_${key}.png` });
+  }
+
+  const aliasesToLoad = [
+    'v2Grass', 'v2Sand', 'v2Water', 'v2SandSoft', 'v2WaterSoft',
+    'v2Tree', 'v2Flowers', 'v2Bush', 'v2GrassTuft'
+  ];
+  for (const key of beachKeys) {
+    aliasesToLoad.push(`v2Beach_${key}`);
+    aliasesToLoad.push(`v2GrassSand_${key}`);
+    aliasesToLoad.push(`v2ShallowDeep_${key}`);
+  }
+
   // Load beautiful high-res V2 assets asynchronously
   try {
-    const assetsToLoad = [
-      '/v2_assets/grass_tile.png',
-      '/v2_assets/tree_1.png',
-      '/v2_assets/flowers.png',
-      '/v2_assets/bush.png',
-      '/v2_assets/grass_tuft.png',
-      '/v2_assets/sand_tile.png',
-      '/v2_assets/water_tile.png',
-      '/v2_assets/sand_tile_soft.png',
-      '/v2_assets/water_tile_soft.png'
-    ];
-    const beachKeys = [
-      "0001", "0010", "0011", "0100", "0101", "0110", "0111",
-      "1000", "1001", "1010", "1011", "1100", "1101", "1110"
-    ];
-    for (const key of beachKeys) {
-      assetsToLoad.push(`/v2_assets/beach_${key}.png`);
-    }
-    await Assets.load(assetsToLoad);
-    console.log('🌲 High-resolution V2 assets loaded successfully.');
+    await Assets.load(aliasesToLoad);
+    console.log('🌲 High-resolution V2 assets loaded successfully:', aliasesToLoad.length, 'aliases cached.');
   } catch (e) {
-    console.warn('⚠️ Error loading V2 assets, falling back to procedural textures:', e);
+    console.error('⚠️ Error loading V2 assets, falling back to procedural textures:', e);
+    document.title = `❌ PixiJS Assets Error: ${e.message || e}`;
   }
 
   // Wrap a Float32Array around our SharedArrayBuffer
@@ -498,31 +512,51 @@ function createIsometricFloor() {
 
   const dirtTex = createTileTexture('dirt', 0x8b5a2b, 0x5c4033); // Brown worn dirt color
 
-  // Get V2 tile assets
-  const v2Grass = Assets.get('/v2_assets/grass_tile.png');
-  const v2Sand = Assets.get('/v2_assets/sand_tile.png');
-  const v2Water = Assets.get('/v2_assets/water_tile.png');
-  const v2SandSoft = Assets.get('/v2_assets/sand_tile_soft.png');
-  const v2WaterSoft = Assets.get('/v2_assets/water_tile_soft.png');
+  // Get V2 tile assets by alias
+  const v2Grass = Assets.get('v2Grass');
+  const v2Sand = Assets.get('v2Sand');
+  const v2Water = Assets.get('v2Water');
+  const v2SandSoft = Assets.get('v2SandSoft');
+  const v2WaterSoft = Assets.get('v2WaterSoft');
 
-  // Cache all 14 rounded beach transition tiles
+  console.log('🎮 PixiJS V2 Tile Asset Cache Status (by Alias):', {
+    v2Grass: v2Grass ? 'LOADED' : 'MISSING',
+    v2Sand: v2Sand ? 'LOADED' : 'MISSING',
+    v2Water: v2Water ? 'LOADED' : 'MISSING',
+    v2SandSoft: v2SandSoft ? 'LOADED' : 'MISSING',
+    v2WaterSoft: v2WaterSoft ? 'LOADED' : 'MISSING'
+  });
+
+  // Cache all 14 rounded beach, grass-sand, and shallow-deep transition tiles
   const v2BeachTransitions = {};
+  const v2GrassSandTransitions = {};
+  const v2ShallowDeepTransitions = {};
   const beachKeys = [
     "0001", "0010", "0011", "0100", "0101", "0110", "0111",
     "1000", "1001", "1010", "1011", "1100", "1101", "1110"
   ];
   for (const key of beachKeys) {
     try {
-      v2BeachTransitions[key] = Assets.get(`/v2_assets/beach_${key}.png`);
+      v2BeachTransitions[key] = Assets.get(`v2Beach_${key}`);
     } catch (e) {
       console.warn(`Could not fetch beach_${key}.png`, e);
     }
+    try {
+      v2GrassSandTransitions[key] = Assets.get(`v2GrassSand_${key}`);
+    } catch (e) {
+      console.warn(`Could not fetch grass_sand_${key}.png`, e);
+    }
+    try {
+      v2ShallowDeepTransitions[key] = Assets.get(`v2ShallowDeep_${key}`);
+    } catch (e) {
+      console.warn(`Could not fetch shallow_deep_${key}.png`, e);
+    }
   }
 
-  // Get V2 micro-details
-  const v2Flowers = Assets.get('/v2_assets/flowers.png');
-  const v2Bush = Assets.get('/v2_assets/bush.png');
-  const v2GrassTuft = Assets.get('/v2_assets/grass_tuft.png');
+  // Get V2 micro-details by alias
+  const v2Flowers = Assets.get('v2Flowers');
+  const v2Bush = Assets.get('v2Bush');
+  const v2GrassTuft = Assets.get('v2GrassTuft');
 
   // Helper to generate textures for the various environmental grass details (Wuselfaktor)
   const createGrassBladesTexture = () => {
@@ -635,7 +669,9 @@ function createIsometricFloor() {
                           texture === v2Water || 
                           texture === v2SandSoft || 
                           texture === v2WaterSoft ||
-                          (v2BeachTransitions && Object.values(v2BeachTransitions).filter(Boolean).includes(texture));
+                          (v2BeachTransitions && Object.values(v2BeachTransitions).filter(Boolean).includes(texture)) ||
+                          (v2GrassSandTransitions && Object.values(v2GrassSandTransitions).filter(Boolean).includes(texture)) ||
+                          (v2ShallowDeepTransitions && Object.values(v2ShallowDeepTransitions).filter(Boolean).includes(texture));
 
         if (isV2Floor) {
           tileSprite.width = TILE_WIDTH + 1;
@@ -675,42 +711,107 @@ function createIsometricFloor() {
         return d < edge - 1.0;
       };
 
+      const isGrassAt = (gx, gy) => {
+        const dx = gx - 64;
+        const dy = gy - 64;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        const ang = Math.atan2(dy, dx);
+        const n = Math.sin(ang * 7) * 6 + Math.cos(ang * 13) * 3;
+        const edge = 46 + n;
+        return d < edge - 5.5;
+      };
+
+      const isShallowAt = (gx, gy) => {
+        const dx = gx - 64;
+        const dy = gy - 64;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        const ang = Math.atan2(dy, dx);
+        const n = Math.sin(ang * 7) * 6 + Math.cos(ang * 13) * 3;
+        const edge = 46 + n;
+        return d < edge + 3.0;
+      };
+
       const b_top = isSandAt(x - 0.5, y - 0.5) ? "1" : "0";
       const b_right = isSandAt(x + 0.5, y - 0.5) ? "1" : "0";
       const b_bottom = isSandAt(x + 0.5, y + 0.5) ? "1" : "0";
       const b_left = isSandAt(x - 0.5, y + 0.5) ? "1" : "0";
-      
       const beachKey = b_top + b_right + b_bottom + b_left;
 
-      if (dist >= landEdge + 5) {
-        addTile(deepWaterTex, deepTint, 1.0);
-      } 
-      else if (dist >= landEdge + 3) {
-        // Deep to shallow water transition (width of 2 units) - soft alpha blend!
-        addTile(deepWaterTex, deepTint, 1.0);
-        const alpha = (landEdge + 5 - dist) / 2;
-        const transitionWaterTex = v2WaterSoft || waterTex;
-        addTile(transitionWaterTex, shallowTint, alpha);
-      } 
-      else if (dist >= landEdge + 1) {
-        addTile(waterTex, shallowTint, 1.0);
+      const g_top = isGrassAt(x - 0.5, y - 0.5) ? "1" : "0";
+      const g_right = isGrassAt(x + 0.5, y - 0.5) ? "1" : "0";
+      const g_bottom = isGrassAt(x + 0.5, y + 0.5) ? "1" : "0";
+      const g_left = isGrassAt(x - 0.5, y + 0.5) ? "1" : "0";
+      const grassKey = g_top + g_right + g_bottom + g_left;
+
+      const w_top = isShallowAt(x - 0.5, y - 0.5) ? "1" : "0";
+      const w_right = isShallowAt(x + 0.5, y - 0.5) ? "1" : "0";
+      const w_bottom = isShallowAt(x + 0.5, y + 0.5) ? "1" : "0";
+      const w_left = isShallowAt(x - 0.5, y + 0.5) ? "1" : "0";
+      const waterKey = w_top + w_right + w_bottom + w_left;
+
+      if (dist >= landEdge + 1) {
+        // Water Zone! Let's check shallow-to-deep transition
+        if (waterKey === "0000") {
+          // Fully deep water
+          addTile(deepWaterTex, deepTint, 1.0);
+        } else if (waterKey === "1111") {
+          // Fully shallow water
+          addTile(waterTex, shallowTint, 1.0);
+        } else {
+          // Rounded shallow-to-deep water transition!
+          const waterTransTex = v2ShallowDeepTransitions[waterKey];
+          if (waterTransTex) {
+            // Draw deep water as background first to prevent transparent holes
+            addTile(deepWaterTex, deepTint, 1.0);
+            // Draw the smooth, rounded shallow water transition on top!
+            addTile(waterTransTex, shallowTint, 1.0);
+          } else {
+            // Fallback to original alpha blend if asset failed to load
+            addTile(deepWaterTex, deepTint, 1.0);
+            const alpha = (landEdge + 5 - dist) / 2;
+            const transitionWaterTex = v2WaterSoft || waterTex;
+            addTile(transitionWaterTex, shallowTint, Math.max(0, Math.min(1, alpha)));
+          }
+        }
       } 
       else {
-        // We are on sand or transition zone! Let's check our autotile key
+        // Land Zone! Let's check sand-to-water beach transition first
         if (beachKey === "1111") {
-          // All 4 corners are sand
-          if (dist >= landEdge - 5.5) {
-            // Keep the beautiful cozy grass scattering on sand
-            const tGrass = (dist - (landEdge - 5.5)) / 3.0;
-            if (tileSeed > tGrass) {
-              addTile(grassTex, 0xffffff, 1.0);
-              isGrassTile = true;
-            } else {
-              addTile(sandTex, 0xffffff, 1.0);
-            }
-          } else {
+          // All 4 corners are sand/land (no water here). Let's check grass-to-sand transition!
+          if (grassKey === "1111") {
+            // Pure Grass!
             addTile(grassTex, 0xffffff, 1.0);
             isGrassTile = true;
+          } else if (grassKey === "0000") {
+            // Pure Sand!
+            addTile(sandTex, 0xffffff, 1.0);
+          } else {
+            // Rounded grass-to-sand autotile transition!
+            const grassSandTex = v2GrassSandTransitions[grassKey];
+            if (grassSandTex) {
+              // Draw sand as the background first
+              addTile(sandTex, 0xffffff, 1.0);
+              // Draw perfectly rounded grass transition on top!
+              addTile(grassSandTex, 0xffffff, 1.0);
+              // Set isGrassTile if there is significant grass on this tile
+              if (dist < landEdge - 4.5) {
+                isGrassTile = true;
+              }
+            } else {
+              // Fallback to checkerboard/scattering if asset is missing
+              if (dist >= landEdge - 5.5) {
+                const tGrass = (dist - (landEdge - 5.5)) / 3.0;
+                if (tileSeed > tGrass) {
+                  addTile(grassTex, 0xffffff, 1.0);
+                  isGrassTile = true;
+                } else {
+                  addTile(sandTex, 0xffffff, 1.0);
+                }
+              } else {
+                addTile(grassTex, 0xffffff, 1.0);
+                isGrassTile = true;
+              }
+            }
           }
         } 
         else if (beachKey === "0000") {
@@ -821,7 +922,7 @@ function createIsometricFloor() {
   }
 
   // 4. Generate high-fidelity textures for our static and dynamic world resources (Forest, Stones, Wildlife, Fish, Minerals)
-  resourceTextures.tree = Assets.get('/v2_assets/tree_1.png') || createTreeTexture();
+  resourceTextures.tree = Assets.get('v2Tree') || createTreeTexture();
   resourceTextures.stone = createStoneDepositTexture();
   resourceTextures.rabbit = createRabbitTexture();
   resourceTextures.deer = createDeerTexture();
@@ -1004,7 +1105,7 @@ const spawnWorldResources = () => {
         const isForestSector = (x < 52 && y < 52) || (x > 76 && y > 76);
         const forestSeed = (x * 19 + y * 43) % 100;
         if (isForestSector && forestSeed < 25) {
-          const v2Tree = Assets.get('/v2_assets/tree_1.png');
+          const v2Tree = Assets.get('v2Tree');
           if (v2Tree && resourceTextures.tree === v2Tree) {
             // High-res V2 AI Tree: wrap in a Container with smooth programmatic shadow and ground offset
             const container = new Container();
