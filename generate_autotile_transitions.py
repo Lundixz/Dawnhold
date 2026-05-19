@@ -43,7 +43,8 @@ def generate_beach_transitions():
             dist = abs(x - cx) / rx + abs(y - cy) / ry
             
             if dist >= 0.99:
-                new_pixels.append((0, 0, 0, 0))
+                r_s, g_s, b_s, _ = sand_pixels[idx]
+                new_pixels.append((r_s, g_s, b_s, 0))
             else:
                 # Bilinear mapping
                 x_norm = (x - cx) / rx
@@ -134,7 +135,8 @@ def generate_grass_sand_transitions():
             dist = abs(x - cx) / rx + abs(y - cy) / ry
             
             if dist >= 0.99:
-                new_pixels.append((0, 0, 0, 0))
+                r_g, g_g, b_g, _ = grass_pixels[idx]
+                new_pixels.append((r_g, g_g, b_g, 0))
             else:
                 # Bilinear mapping
                 x_norm = (x - cx) / rx
@@ -223,7 +225,8 @@ def generate_shallow_deep_transitions():
             dist = abs(x - cx) / rx + abs(y - cy) / ry
             
             if dist >= 0.99:
-                new_pixels.append((0, 0, 0, 0))
+                r_w, g_w, b_w, _ = shallow_pixels[idx]
+                new_pixels.append((r_w, g_w, b_w, 0))
             else:
                 # Bilinear mapping
                 x_norm = (x - cx) / rx

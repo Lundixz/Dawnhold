@@ -92,6 +92,7 @@ export async function initGame(canvasElement, sharedBuffer, maxEntities) {
     width: window.innerWidth,
     height: window.innerHeight,
     antialias: true,
+    roundPixels: true, // Snap sprites to integer coordinates to eliminate sub-pixel seams!
     backgroundAlpha: 0, // Transparent background to show index.css background gradient
     resizeTo: window
   });
@@ -106,25 +107,35 @@ export async function initGame(canvasElement, sharedBuffer, maxEntities) {
   app = newApp;
 
   // Register unified aliases in PixiJS to prevent relative path mapping/domain issues in browser caches
-  Assets.add({ alias: 'v2Grass', src: '/v2_assets/grass_tile.png' });
-  Assets.add({ alias: 'v2Sand', src: '/v2_assets/sand_tile.png' });
-  Assets.add({ alias: 'v2Water', src: '/v2_assets/water_tile.png' });
-  Assets.add({ alias: 'v2SandSoft', src: '/v2_assets/sand_tile_soft.png' });
-  Assets.add({ alias: 'v2WaterSoft', src: '/v2_assets/water_tile_soft.png' });
-  Assets.add({ alias: 'v2Tree', src: '/v2_assets/tree_1.png' });
-  Assets.add({ alias: 'v2Flowers', src: '/v2_assets/flowers.png' });
-  Assets.add({ alias: 'v2Bush', src: '/v2_assets/bush.png' });
-  Assets.add({ alias: 'v2GrassTuft', src: '/v2_assets/grass_tuft.png' });
+  const cacheBust = '?v=5';
+  
+  // Prevent resolver key duplicate warnings during Vite Hot Module Reload
+  if (!Assets.resolver.hasKey('v2Grass')) {
+    Assets.add({ alias: 'v2Grass', src: '/v2_assets/grass_tile.png' + cacheBust });
+    Assets.add({ alias: 'v2Sand', src: '/v2_assets/sand_tile.png' + cacheBust });
+    Assets.add({ alias: 'v2Water', src: '/v2_assets/water_tile.png' + cacheBust });
+    Assets.add({ alias: 'v2SandSoft', src: '/v2_assets/sand_tile_soft.png' + cacheBust });
+    Assets.add({ alias: 'v2WaterSoft', src: '/v2_assets/water_tile_soft.png' + cacheBust });
+    Assets.add({ alias: 'v2Tree', src: '/v2_assets/tree_1.png' + cacheBust });
+    Assets.add({ alias: 'v2Flowers', src: '/v2_assets/flowers.png' + cacheBust });
+    Assets.add({ alias: 'v2Bush', src: '/v2_assets/bush.png' + cacheBust });
+    Assets.add({ alias: 'v2GrassTuft', src: '/v2_assets/grass_tuft.png' + cacheBust });
+
+    const beachKeys = [
+      "0001", "0010", "0011", "0100", "0101", "0110", "0111",
+      "1000", "1001", "1010", "1011", "1100", "1101", "1110"
+    ];
+    for (const key of beachKeys) {
+      Assets.add({ alias: `v2Beach_${key}`, src: `/v2_assets/beach_${key}.png` + cacheBust });
+      Assets.add({ alias: `v2GrassSand_${key}`, src: `/v2_assets/grass_sand_${key}.png` + cacheBust });
+      Assets.add({ alias: `v2ShallowDeep_${key}`, src: `/v2_assets/shallow_deep_${key}.png` + cacheBust });
+    }
+  }
 
   const beachKeys = [
     "0001", "0010", "0011", "0100", "0101", "0110", "0111",
     "1000", "1001", "1010", "1011", "1100", "1101", "1110"
   ];
-  for (const key of beachKeys) {
-    Assets.add({ alias: `v2Beach_${key}`, src: `/v2_assets/beach_${key}.png` });
-    Assets.add({ alias: `v2GrassSand_${key}`, src: `/v2_assets/grass_sand_${key}.png` });
-    Assets.add({ alias: `v2ShallowDeep_${key}`, src: `/v2_assets/shallow_deep_${key}.png` });
-  }
 
   const aliasesToLoad = [
     'v2Grass', 'v2Sand', 'v2Water', 'v2SandSoft', 'v2WaterSoft',
@@ -140,6 +151,17 @@ export async function initGame(canvasElement, sharedBuffer, maxEntities) {
   try {
     await Assets.load(aliasesToLoad);
     console.log('🌲 High-resolution V2 assets loaded successfully:', aliasesToLoad.length, 'aliases cached.');
+    
+    // Set 'nearest' scaleMode for all floor tiles to completely eliminate bilinear bleeding and keep pixel-art crisp!
+    for (const alias of aliasesToLoad) {
+      const tex = Assets.get(alias);
+      if (tex && tex.source) {
+        tex.source.scaleMode = 'nearest';
+        if (tex.source.style) {
+          tex.source.style.addressMode = 'clamp-to-edge';
+        }
+      }
+    }
   } catch (e) {
     console.error('⚠️ Error loading V2 assets, falling back to procedural textures:', e);
     document.title = `❌ PixiJS Assets Error: ${e.message || e}`;
@@ -494,6 +516,12 @@ function createIsometricFloor() {
     }
     
     const tex = app.renderer.textureGenerator.generateTexture({ target: g });
+    if (tex && tex.source) {
+      tex.source.scaleMode = 'nearest';
+      if (tex.source.style) {
+        tex.source.style.addressMode = 'clamp-to-edge';
+      }
+    }
     g.destroy();
     return tex;
   };
@@ -643,6 +671,9 @@ function createIsometricFloor() {
     bush: v2Bush || null
   };
 
+  let v2TilesRendered = 0;
+  let procTilesRendered = 0;
+
   // 3. Draw the entire 128x128 grid by creating and caching quads (2 triangles) which bypasses complex triangulation!
   for (let x = 0; x < MAP_SIZE; x++) {
     for (let y = 0; y < MAP_SIZE; y++) {
@@ -661,8 +692,6 @@ function createIsometricFloor() {
       const screenY = (x + y) * (TILE_HEIGHT / 2);
 
       const addTile = (texture, tint, alpha) => {
-        const tileSprite = new Sprite(texture);
-        
         // Handle V2 tile sizes and seamless overlaps
         const isV2Floor = texture === v2Grass || 
                           texture === v2Sand || 
@@ -673,12 +702,46 @@ function createIsometricFloor() {
                           (v2GrassSandTransitions && Object.values(v2GrassSandTransitions).filter(Boolean).includes(texture)) ||
                           (v2ShallowDeepTransitions && Object.values(v2ShallowDeepTransitions).filter(Boolean).includes(texture));
 
+        // 1. Draw a solid, sharp procedural fallback tile underneath BASE V2 tiles only (NOT transition tiles!) to kill seams!
+        const isBaseV2Floor = texture === v2Grass || 
+                              texture === v2Sand || 
+                              texture === v2Water || 
+                              texture === v2SandSoft || 
+                              texture === v2WaterSoft;
+
+        if (isBaseV2Floor) {
+          let solidBgTex = null;
+          let solidTint = 0xffffff;
+
+          if (texture === v2Grass) {
+            solidBgTex = isEven ? textures.grassEven : textures.grassOdd;
+          } else if (texture === v2Sand || texture === v2SandSoft) {
+            solidBgTex = isEven ? textures.sandEven : textures.sandOdd;
+          } else if (texture === v2Water || texture === v2WaterSoft) {
+            solidBgTex = isEven ? textures.shallowEven : textures.shallowOdd;
+            solidTint = shallowTint;
+          }
+
+          if (solidBgTex) {
+            const bgSprite = new Sprite(solidBgTex);
+            bgSprite.x = screenX - TILE_WIDTH / 2;
+            bgSprite.y = screenY;
+            bgSprite.tint = solidTint;
+            bgSprite.alpha = 1.0;
+            floorContainer.addChild(bgSprite);
+          }
+        }
+
+        // 2. Draw the beautiful high-res V2 sprite on top!
+        const tileSprite = new Sprite(texture);
         if (isV2Floor) {
-          tileSprite.width = TILE_WIDTH + 1;
-          tileSprite.height = TILE_HEIGHT + 1;
-          tileSprite.x = screenX - TILE_WIDTH / 2 - 0.5;
-          tileSprite.y = screenY - 0.5;
+          v2TilesRendered++;
+          tileSprite.width = TILE_WIDTH + 2;   // 66px: maintains perfect 2:1 aspect ratio
+          tileSprite.height = TILE_HEIGHT + 1; // 33px: maintains perfect 2:1 aspect ratio
+          tileSprite.x = screenX - TILE_WIDTH / 2 - 1.0; // Symmetrical overlap of 1.0px left/right
+          tileSprite.y = screenY - 0.5; // Symmetrical overlap of 0.5px top/bottom
         } else {
+          procTilesRendered++;
           tileSprite.x = screenX - TILE_WIDTH / 2;
           tileSprite.y = screenY;
         }
@@ -920,6 +983,8 @@ function createIsometricFloor() {
       }
     }
   }
+
+  console.log(`📊 createIsometricFloor Diagnostics: Rendered ${v2TilesRendered} V2 tiles and ${procTilesRendered} procedural tiles.`);
 
   // 4. Generate high-fidelity textures for our static and dynamic world resources (Forest, Stones, Wildlife, Fish, Minerals)
   resourceTextures.tree = Assets.get('v2Tree') || createTreeTexture();
