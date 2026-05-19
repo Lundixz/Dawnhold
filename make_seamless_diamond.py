@@ -20,8 +20,8 @@ def make_seamless_diamond(src_path, dest_path):
     pixels = list(patch.getdata())
     new_pixels = []
     
-    cx, cy = tile_w / 2, tile_h / 2
-    rx, ry = tile_w / 2, tile_h / 2
+    cx, cy = 127.5, 63.5
+    rx, ry = 127.5, 63.5
     
     for idx, (r, g, b, a) in enumerate(pixels):
         x = idx % tile_w
@@ -30,15 +30,11 @@ def make_seamless_diamond(src_path, dest_path):
         # Distance calculation for diamond boundary
         dist = abs(x - cx) / rx + abs(y - cy) / ry
         
-        # Soft feathering at the boundary
-        if dist <= 0.98:
+        # 1.015 threshold creates a 2px horizontal / 1px vertical overlap to kill WebGL/WebGPU seams under zoom!
+        if dist <= 1.015:
             alpha = 255
-        elif dist >= 1.02:
-            alpha = 0
         else:
-            # Interpolate smoothly
-            t = (dist - 0.98) / (1.02 - 0.98)
-            alpha = int(255 * (1.0 - t))
+            alpha = 0
             
         new_pixels.append((r, g, b, alpha))
         

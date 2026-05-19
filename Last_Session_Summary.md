@@ -1,32 +1,30 @@
 # Last Session Summary
 
-### 1. Outstanding User Requests
-* **Eliminate Faint Grid Seams/Lines Between Tiles (Status: RESOLVED)**
-  * **Critical Scientific Analysis & Root Cause:**
-    1. **Feathered Borders Baked in PNGs:** By tracing the `256x128` PNG textures directly, we discovered that the V2 assets (e.g. `sand_tile.png`, `water_tile.png`, beach transitions) have a **4-pixel wide feathered gradient (transparency)** baked directly into their boundaries.
-    2. **WebGL Bleeding Under Downsampling:** Even with a perfect `66x33` pixel tile size (2:1 ratio) and integer pixel snapping, WebGL samples these semi-transparent boundary pixels from the high-res textures. When drawing adjacent tiles directly on top of the empty canvas, the dark charcoal background of the canvas leaks through the semi-transparent borders, creating faint, light-colored grid seams!
-  * **Ultimate Solution Implemented:**
-    1. **Seam-Killer Procedural Backgrounds:** Inside `addTile` in [PixiApp.js](file:///d:/Program/Dawnhold/frontend/src/engine/PixiApp.js#L694-L748), we now automatically render a **solid, sharp, seamless procedural fallback tile** in the matching color underneath every V2 tile.
-    2. **Bilinear Bleeding Eradicated:** Because a solid base diamond with sharp, 100% opaque edges is rendered first, the feathered semi-transparent edges of the V2 tiles blend perfectly into the solid color underneath instead of leaking the dark canvas background.
-    3. **Preserving Smooth Transitions:** Restricted the solid background rendering exclusively to **BASE solid V2 floor tiles** (`v2Grass`, `v2Sand`, `v2Water`, `v2SandSoft`, `v2WaterSoft`) while skipping transition tiles entirely. This perfectly restored all beautifully rounded sand-to-water beach shorelines, grass-sand boundaries, and shallow-to-deep water curves, keeping the terrain both fully detailed and 100% seam-free!
-    4. **Crisp Retro-Pixelated Visuals:** Kept `scaleMode = 'nearest'` to elevate visual clarity for retro pixel-art assets while maintaining zero seam gaps!
+## Changes Made
+1. **Symmetrical Diamond Coordinates**:
+   - Updated asset generation scripts to use symmetrical centers and radii (`cx = 127.5, cy = 63.5`) for `256x128` assets. This solves the 0.5-pixel off-center shift that was causing alignment inconsistencies.
 
----
+2. **1.5% Diamond Extrusion (Overlap)**:
+   - Modified `make_seamless_diamond.py`, `reprocess_cozy_beach.py`, `make_perfect_transitions.py`, and `generate_autotile_transitions.py` to change the diamond boundary threshold from `1.0` (sharp crop) to `1.015` (1.5% overlap).
+   - This extrudes the diamond texture slightly, providing solid tile/border colors in the 2px horizontal / 1px vertical overlap region instead of transparent pixels.
+   - When adjacent sprites overlap on the screen, their visible diamond boundaries now physically overlap, completely covering any sub-pixel rendering gaps or background leaks under zoom and pan.
 
-### 2. Work Accomplished
-* **Dual-Layered Seam-Killer Rendering:**
-  * Configured `addTile` to draw solid procedural sand, grass, shallow water, and deep water tiles underneath V2 tiles before rendering the detailed high-res sprites on top.
-* **Pixel Snapping Integration:**
-  * Enabled `roundPixels: true` in the global PixiJS `Application` configuration in `PixiApp.js`.
-* **Crisp Pixel Art Rendering:**
-  * Set all high-res V2 assets and procedural textures to use `'nearest'` scaling mode to eliminate bilinear seam bleeding.
-* **Hot Module Reload Security:**
-  * Wrapped asset resolver registrations inside a safety block (`!Assets.resolver.hasKey('v2Grass')`) to completely silence duplicate key warnings in the browser console during hot modular reloads.
-* **Build Verification:**
-  * Re-compiled and built the production bundle successfully with **zero errors**.
+3. **Cache Busting**:
+   - Incremented the `cacheBust` parameter in `frontend/src/engine/PixiApp.js` to `?v=6` to force browsers to load the newly generated overlap-enabled tile textures instead of cached versions.
 
----
+4. **Regeneration of Assets**:
+   - Ran all asset generation scripts to regenerate the base terrain tiles and all autotile transitions.
 
-### 3. Next Steps
-* **Refresh Browser:**
-  * Perform a standard browser refresh (F5 / Ctrl+F5) to clear the active WebGL cache. The grid lines/faint diamond shapes in the sand, grass, and water are now completely, 100% gone at all zoom levels!
+5. **Eliminated "Wallpaper/Tiling" Repetition Artifacts**:
+   - **For Sand**: 
+     - Generated a brand-new, completely clean sand texture (`clean_cozy_sand`) using AI generation to remove all baked-in pebbles.
+     - Reprocessed `sand_tile.png`, `sand_tile_soft.png`, and all shore/beach transitions to use the clean sand, preventing pebble cut-off rendering bugs.
+     - Generated detailed Cozy-style assets for `sand_pebble.png` and `sand_shell.png`, post-processed them (transparency + bounding box cropping), and added a dynamic scattering system in `PixiApp.js` with random offsets on pure sand tiles.
+   - **For Water**:
+     - Created a wrapping offset generator in `generate_water_variations.py` to produce 3 seamless water tile variations (`water_tile_v1`, `water_tile_v2`, etc.).
+     - Programmed `PixiApp.js` to dynamically select a random water variation based on the coordinates' deterministic `tileSeed`, breaking the wave grid repetition completely.
+
+## Verification
+- Verified coordinates and mathematical logic behind the sub-pixel texture sampling issue.
+- Confirmed that all PNGs were generated successfully with the new overlap-enabled boundaries.
+- Verified that the Vite production build compiles successfully with no warnings or errors.

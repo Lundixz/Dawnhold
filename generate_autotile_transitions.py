@@ -14,8 +14,8 @@ def generate_beach_transitions():
     water_img = Image.open(water_path).convert("RGBA")
     
     tile_w, tile_h = 256, 128
-    cx, cy = tile_w / 2, tile_h / 2
-    rx, ry = tile_w / 2, tile_h / 2
+    cx, cy = 127.5, 63.5
+    rx, ry = 127.5, 63.5
     
     sand_pixels = list(sand_img.getdata())
     water_pixels = list(water_img.getdata())
@@ -42,7 +42,7 @@ def generate_beach_transitions():
             # Manhattan distance for diamond shape
             dist = abs(x - cx) / rx + abs(y - cy) / ry
             
-            if dist >= 0.99:
+            if dist >= 1.015:
                 r_s, g_s, b_s, _ = sand_pixels[idx]
                 new_pixels.append((r_s, g_s, b_s, 0))
             else:
@@ -109,8 +109,8 @@ def generate_grass_sand_transitions():
     grass_img = Image.open(grass_path).convert("RGBA")
     
     tile_w, tile_h = 256, 128
-    cx, cy = tile_w / 2, tile_h / 2
-    rx, ry = tile_w / 2, tile_h / 2
+    cx, cy = 127.5, 63.5
+    rx, ry = 127.5, 63.5
     
     grass_pixels = list(grass_img.getdata())
     
@@ -134,7 +134,7 @@ def generate_grass_sand_transitions():
             # Manhattan distance for diamond shape
             dist = abs(x - cx) / rx + abs(y - cy) / ry
             
-            if dist >= 0.99:
+            if dist >= 1.015:
                 r_g, g_g, b_g, _ = grass_pixels[idx]
                 new_pixels.append((r_g, g_g, b_g, 0))
             else:
@@ -199,8 +199,8 @@ def generate_shallow_deep_transitions():
     shallow_img = Image.open(shallow_path).convert("RGBA")
     
     tile_w, tile_h = 256, 128
-    cx, cy = tile_w / 2, tile_h / 2
-    rx, ry = tile_w / 2, tile_h / 2
+    cx, cy = 127.5, 63.5
+    rx, ry = 127.5, 63.5
     
     shallow_pixels = list(shallow_img.getdata())
     
@@ -224,7 +224,7 @@ def generate_shallow_deep_transitions():
             # Manhattan distance for diamond shape
             dist = abs(x - cx) / rx + abs(y - cy) / ry
             
-            if dist >= 0.99:
+            if dist >= 1.015:
                 r_w, g_w, b_w, _ = shallow_pixels[idx]
                 new_pixels.append((r_w, g_w, b_w, 0))
             else:

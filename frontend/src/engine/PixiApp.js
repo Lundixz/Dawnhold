@@ -107,15 +107,21 @@ export async function initGame(canvasElement, sharedBuffer, maxEntities) {
   app = newApp;
 
   // Register unified aliases in PixiJS to prevent relative path mapping/domain issues in browser caches
-  const cacheBust = '?v=5';
+  const cacheBust = '?v=6';
   
   // Prevent resolver key duplicate warnings during Vite Hot Module Reload
   if (!Assets.resolver.hasKey('v2Grass')) {
     Assets.add({ alias: 'v2Grass', src: '/v2_assets/grass_tile.png' + cacheBust });
     Assets.add({ alias: 'v2Sand', src: '/v2_assets/sand_tile.png' + cacheBust });
     Assets.add({ alias: 'v2Water', src: '/v2_assets/water_tile.png' + cacheBust });
+    Assets.add({ alias: 'v2Water_v1', src: '/v2_assets/water_tile_v1.png' + cacheBust });
+    Assets.add({ alias: 'v2Water_v2', src: '/v2_assets/water_tile_v2.png' + cacheBust });
     Assets.add({ alias: 'v2SandSoft', src: '/v2_assets/sand_tile_soft.png' + cacheBust });
     Assets.add({ alias: 'v2WaterSoft', src: '/v2_assets/water_tile_soft.png' + cacheBust });
+    Assets.add({ alias: 'v2WaterSoft_v1', src: '/v2_assets/water_tile_soft_v1.png' + cacheBust });
+    Assets.add({ alias: 'v2WaterSoft_v2', src: '/v2_assets/water_tile_soft_v2.png' + cacheBust });
+    Assets.add({ alias: 'v2SandPebble', src: '/v2_assets/sand_pebble.png' + cacheBust });
+    Assets.add({ alias: 'v2SandShell', src: '/v2_assets/sand_shell.png' + cacheBust });
     Assets.add({ alias: 'v2Tree', src: '/v2_assets/tree_1.png' + cacheBust });
     Assets.add({ alias: 'v2Flowers', src: '/v2_assets/flowers.png' + cacheBust });
     Assets.add({ alias: 'v2Bush', src: '/v2_assets/bush.png' + cacheBust });
@@ -138,7 +144,9 @@ export async function initGame(canvasElement, sharedBuffer, maxEntities) {
   ];
 
   const aliasesToLoad = [
-    'v2Grass', 'v2Sand', 'v2Water', 'v2SandSoft', 'v2WaterSoft',
+    'v2Grass', 'v2Sand', 'v2Water', 'v2Water_v1', 'v2Water_v2', 
+    'v2SandSoft', 'v2WaterSoft', 'v2WaterSoft_v1', 'v2WaterSoft_v2',
+    'v2SandPebble', 'v2SandShell',
     'v2Tree', 'v2Flowers', 'v2Bush', 'v2GrassTuft'
   ];
   for (const key of beachKeys) {
@@ -152,13 +160,17 @@ export async function initGame(canvasElement, sharedBuffer, maxEntities) {
     await Assets.load(aliasesToLoad);
     console.log('🌲 High-resolution V2 assets loaded successfully:', aliasesToLoad.length, 'aliases cached.');
     
-    // Set 'nearest' scaleMode for all floor tiles to completely eliminate bilinear bleeding and keep pixel-art crisp!
+    // Set 'nearest' scaleMode and disable mipmapping for all floor tiles to completely eliminate seams and keep pixel-art crisp!
     for (const alias of aliasesToLoad) {
       const tex = Assets.get(alias);
       if (tex && tex.source) {
         tex.source.scaleMode = 'nearest';
         if (tex.source.style) {
-          tex.source.style.addressMode = 'clamp-to-edge';
+          tex.source.style.addressModeU = 'clamp-to-edge';
+          tex.source.style.addressModeV = 'clamp-to-edge';
+          tex.source.style.minFilter = 'nearest';
+          tex.source.style.magFilter = 'nearest';
+          tex.source.style.mipmapFilter = 'off';
         }
       }
     }
@@ -408,7 +420,10 @@ function createIsometricFloor() {
     }
 
     // Draw procedural organic textures inside the diamond!
-    if (tileType === 'grass') {
+    if (tileType === 'solid') {
+      // Pure solid diamond, no strokes, no noise! Perfect for Seam-Killer background.
+    }
+    else if (tileType === 'grass') {
       // 1. Draw soft grass details (flecks of different greens)
       // We want to draw tiny dots and small grass blades inside the diamond bounds
       const greens = [0x3c7c34, 0x43863a, 0x33632b, 0x2e5a26];
@@ -519,7 +534,11 @@ function createIsometricFloor() {
     if (tex && tex.source) {
       tex.source.scaleMode = 'nearest';
       if (tex.source.style) {
-        tex.source.style.addressMode = 'clamp-to-edge';
+        tex.source.style.addressModeU = 'clamp-to-edge';
+        tex.source.style.addressModeV = 'clamp-to-edge';
+        tex.source.style.minFilter = 'nearest';
+        tex.source.style.magFilter = 'nearest';
+        tex.source.style.mipmapFilter = 'off';
       }
     }
     g.destroy();
@@ -535,7 +554,10 @@ function createIsometricFloor() {
     sandEven: createTileTexture('sand', 0xdecba4, 0xcfbc95),
     sandOdd: createTileTexture('sand', 0xe3d2b0, 0xcfbc95),
     grassEven: createTileTexture('grass', 0x35682d, 0x2b5425),
-    grassOdd: createTileTexture('grass', 0x3b7a33, 0x2b5425)
+    grassOdd: createTileTexture('grass', 0x3b7a33, 0x2b5425),
+    solidGrass: createTileTexture('solid', 0x35682d, null),
+    solidSand: createTileTexture('solid', 0xdecba4, null),
+    solidWater: createTileTexture('solid', 0xffffff, null)
   };
 
   const dirtTex = createTileTexture('dirt', 0x8b5a2b, 0x5c4033); // Brown worn dirt color
@@ -544,15 +566,25 @@ function createIsometricFloor() {
   const v2Grass = Assets.get('v2Grass');
   const v2Sand = Assets.get('v2Sand');
   const v2Water = Assets.get('v2Water');
+  const v2Water_v1 = Assets.get('v2Water_v1');
+  const v2Water_v2 = Assets.get('v2Water_v2');
   const v2SandSoft = Assets.get('v2SandSoft');
   const v2WaterSoft = Assets.get('v2WaterSoft');
+  const v2WaterSoft_v1 = Assets.get('v2WaterSoft_v1');
+  const v2WaterSoft_v2 = Assets.get('v2WaterSoft_v2');
+  const v2SandPebble = Assets.get('v2SandPebble');
+  const v2SandShell = Assets.get('v2SandShell');
 
   console.log('🎮 PixiJS V2 Tile Asset Cache Status (by Alias):', {
     v2Grass: v2Grass ? 'LOADED' : 'MISSING',
     v2Sand: v2Sand ? 'LOADED' : 'MISSING',
     v2Water: v2Water ? 'LOADED' : 'MISSING',
+    v2Water_v1: v2Water_v1 ? 'LOADED' : 'MISSING',
+    v2Water_v2: v2Water_v2 ? 'LOADED' : 'MISSING',
     v2SandSoft: v2SandSoft ? 'LOADED' : 'MISSING',
-    v2WaterSoft: v2WaterSoft ? 'LOADED' : 'MISSING'
+    v2WaterSoft: v2WaterSoft ? 'LOADED' : 'MISSING',
+    v2SandPebble: v2SandPebble ? 'LOADED' : 'MISSING',
+    v2SandShell: v2SandShell ? 'LOADED' : 'MISSING'
   });
 
   // Cache all 14 rounded beach, grass-sand, and shallow-deep transition tiles
@@ -668,7 +700,9 @@ function createIsometricFloor() {
     flowersPurple: v2Flowers || createPurpleFlowersTexture(),
     flowersRed: v2Flowers || createRedFlowersTexture(),
     rock: createRockTexture(),
-    bush: v2Bush || null
+    bush: v2Bush || null,
+    sandPebble: v2SandPebble || null,
+    sandShell: v2SandShell || null
   };
 
   let v2TilesRendered = 0;
@@ -696,8 +730,12 @@ function createIsometricFloor() {
         const isV2Floor = texture === v2Grass || 
                           texture === v2Sand || 
                           texture === v2Water || 
+                          texture === v2Water_v1 || 
+                          texture === v2Water_v2 || 
                           texture === v2SandSoft || 
                           texture === v2WaterSoft ||
+                          texture === v2WaterSoft_v1 ||
+                          texture === v2WaterSoft_v2 ||
                           (v2BeachTransitions && Object.values(v2BeachTransitions).filter(Boolean).includes(texture)) ||
                           (v2GrassSandTransitions && Object.values(v2GrassSandTransitions).filter(Boolean).includes(texture)) ||
                           (v2ShallowDeepTransitions && Object.values(v2ShallowDeepTransitions).filter(Boolean).includes(texture));
@@ -709,23 +747,25 @@ function createIsometricFloor() {
                               texture === v2SandSoft || 
                               texture === v2WaterSoft;
 
-        if (isBaseV2Floor) {
+        if (false && isBaseV2Floor) {
           let solidBgTex = null;
           let solidTint = 0xffffff;
 
           if (texture === v2Grass) {
-            solidBgTex = isEven ? textures.grassEven : textures.grassOdd;
+            solidBgTex = textures.solidGrass;
           } else if (texture === v2Sand || texture === v2SandSoft) {
-            solidBgTex = isEven ? textures.sandEven : textures.sandOdd;
+            solidBgTex = textures.solidSand;
           } else if (texture === v2Water || texture === v2WaterSoft) {
-            solidBgTex = isEven ? textures.shallowEven : textures.shallowOdd;
-            solidTint = shallowTint;
+            solidBgTex = textures.solidWater;
           }
+          solidTint = tint;
 
           if (solidBgTex) {
             const bgSprite = new Sprite(solidBgTex);
-            bgSprite.x = screenX - TILE_WIDTH / 2;
-            bgSprite.y = screenY;
+            bgSprite.width = TILE_WIDTH + 2;   // 66px: maintains perfect 2:1 aspect ratio
+            bgSprite.height = TILE_HEIGHT + 1; // 33px: maintains perfect 2:1 aspect ratio
+            bgSprite.x = screenX - TILE_WIDTH / 2 - 1.0; // Symmetrical overlap of 1.0px left/right
+            bgSprite.y = screenY - 0.5; // Symmetrical overlap of 0.5px top/bottom
             bgSprite.tint = solidTint;
             bgSprite.alpha = 1.0;
             floorContainer.addChild(bgSprite);
@@ -754,11 +794,30 @@ function createIsometricFloor() {
       // Deterministic pseudo-random seed for organic scattering
       const tileSeed = ((x * 127 + y * 313) % 1000) / 1000;
       let isGrassTile = false;
+      let isPureSandTile = false;
 
       const grassTex = v2Grass || (isEven ? textures.grassEven : textures.grassOdd);
       const sandTex = v2Sand || (isEven ? textures.sandEven : textures.sandOdd);
-      const waterTex = v2Water || (isEven ? textures.shallowEven : textures.shallowOdd);
-      const deepWaterTex = v2Water || (isEven ? textures.deepEven : textures.deepOdd);
+      
+      let waterTex = v2Water || (isEven ? textures.shallowEven : textures.shallowOdd);
+      let deepWaterTex = v2Water || (isEven ? textures.deepEven : textures.deepOdd);
+      let fallbackWaterSoft = v2WaterSoft || waterTex;
+
+      if (v2Water) {
+        if (tileSeed < 0.33) {
+          waterTex = v2Water;
+          deepWaterTex = v2Water;
+          fallbackWaterSoft = v2WaterSoft;
+        } else if (tileSeed < 0.66) {
+          waterTex = v2Water_v1;
+          deepWaterTex = v2Water_v1;
+          fallbackWaterSoft = v2WaterSoft_v1;
+        } else {
+          waterTex = v2Water_v2;
+          deepWaterTex = v2Water_v2;
+          fallbackWaterSoft = v2WaterSoft_v2;
+        }
+      }
 
       const deepTint = v2Water ? 0x1976d2 : 0xffffff;
       const shallowTint = v2Water ? 0x4fc3f7 : 0xffffff;
@@ -832,7 +891,7 @@ function createIsometricFloor() {
             // Fallback to original alpha blend if asset failed to load
             addTile(deepWaterTex, deepTint, 1.0);
             const alpha = (landEdge + 5 - dist) / 2;
-            const transitionWaterTex = v2WaterSoft || waterTex;
+            const transitionWaterTex = fallbackWaterSoft;
             addTile(transitionWaterTex, shallowTint, Math.max(0, Math.min(1, alpha)));
           }
         }
@@ -848,6 +907,7 @@ function createIsometricFloor() {
           } else if (grassKey === "0000") {
             // Pure Sand!
             addTile(sandTex, 0xffffff, 1.0);
+            isPureSandTile = true;
           } else {
             // Rounded grass-to-sand autotile transition!
             const grassSandTex = v2GrassSandTransitions[grassKey];
@@ -965,6 +1025,31 @@ function createIsometricFloor() {
           detailSprite = new Sprite(details.rock);
           detailSprite.x = screenX - TILE_WIDTH / 2;
           detailSprite.y = screenY;
+        }
+
+        if (detailSprite) {
+          floorContainer.addChild(detailSprite);
+        }
+      }
+
+      // Programmatically add micro-details (pebbles, shells) on pure sand beach tiles
+      if (isPureSandTile) {
+        const sandSeedVal = (x * 37 + y * 73) % 100;
+        let detailSprite = null;
+
+        if (sandSeedVal === 5 && details.sandPebble) {
+          detailSprite = new Sprite(details.sandPebble);
+          detailSprite.width = 14;
+          detailSprite.height = 14;
+          // Deterministic offset inside the tile to break grid structure
+          detailSprite.x = screenX - 7 + ((x % 3) - 1) * 3;
+          detailSprite.y = screenY - 7 + ((y % 3) - 1) * 1.5;
+        } else if (sandSeedVal === 12 && details.sandShell) {
+          detailSprite = new Sprite(details.sandShell);
+          detailSprite.width = 12;
+          detailSprite.height = 12;
+          detailSprite.x = screenX - 6 + ((x % 3) - 1) * 3;
+          detailSprite.y = screenY - 6 + ((y % 3) - 1) * 1.5;
         }
 
         if (detailSprite) {

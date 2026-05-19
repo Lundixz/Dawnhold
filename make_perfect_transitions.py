@@ -17,8 +17,8 @@ def make_perfect_seamless_diamond(src_path, dest_path, feather_start=0.92, feath
     pixels = list(patch.getdata())
     new_pixels = []
     
-    cx, cy = tile_w / 2, tile_h / 2
-    rx, ry = tile_w / 2, tile_h / 2
+    cx, cy = 127.5, 63.5
+    rx, ry = 127.5, 63.5
     
     for idx, (r, g, b, a) in enumerate(pixels):
         x = idx % tile_w
@@ -27,13 +27,11 @@ def make_perfect_seamless_diamond(src_path, dest_path, feather_start=0.92, feath
         # Calculate Manhattan distance for diamond shape
         dist = abs(x - cx) / rx + abs(y - cy) / ry
         
-        if dist <= feather_start:
+        # 1.015 threshold creates a 2px horizontal / 1px vertical overlap to kill WebGL/WebGPU seams under zoom!
+        if dist <= 1.015:
             alpha = 255
-        elif dist >= feather_end:
-            alpha = 0
         else:
-            t = (dist - feather_start) / (feather_end - feather_start)
-            alpha = int(255 * (1.0 - t))
+            alpha = 0
             
         new_pixels.append((r, g, b, alpha))
         
@@ -42,7 +40,7 @@ def make_perfect_seamless_diamond(src_path, dest_path, feather_start=0.92, feath
     patch.save(dest_path, "PNG")
     print(f"Successfully saved perfect tile to {dest_path}")
 
-src_sand = r"C:\Users\lundm\.gemini\antigravity\brain\e1a57445-fc4d-425d-b2bf-8fbf415c5334\seamless_cozy_sand_1779052121514.png"
+src_sand = r"C:\Users\lundm\.gemini\antigravity\brain\da71a42f-7e3f-462f-9f30-04e8fe567d22\clean_cozy_sand_1779185664158.png"
 dest_sand = r"d:\Program\Dawnhold\frontend\public\v2_assets\sand_tile_soft.png"
 
 src_water = r"C:\Users\lundm\.gemini\antigravity\brain\e1a57445-fc4d-425d-b2bf-8fbf415c5334\seamless_cozy_water_1779052139057.png"
